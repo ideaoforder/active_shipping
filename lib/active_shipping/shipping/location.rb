@@ -15,7 +15,9 @@ module ActiveMerchant #:nodoc:
                   :phone,
                   :fax,
                   :address_type,
-                  :company_name
+                  :company_name,
+                  :attention_name,
+                  :tax_id
       
       alias_method :zip, :postal_code
       alias_method :postal, :postal_code
@@ -23,6 +25,8 @@ module ActiveMerchant #:nodoc:
       alias_method :territory, :province
       alias_method :region, :province
       alias_method :company, :company_name
+      alias_method :attention, :attention_name
+      alias_method :tax_identification_number, :tax_id
       
       def initialize(options = {})
         @country = (options[:country].nil? or options[:country].is_a?(ActiveMerchant::Country)) ?
@@ -38,6 +42,8 @@ module ActiveMerchant #:nodoc:
         @phone = options[:phone]
         @fax = options[:fax]
         @company_name = options[:company_name] || options[:company]
+        @attention_name = options[:attention_name] || options[:attention]
+        @tax_id = options[:tax_id] || options[:tax_identification_number]
 
         self.address_type = options[:address_type]
       end
@@ -56,7 +62,9 @@ module ActiveMerchant #:nodoc:
           :phone => [:phone, :phone_number],
           :fax => [:fax, :fax_number],
           :address_type => [:address_type],
-          :company_name => [:company, :company_name]
+          :company_name => [:company, :company_name],
+          :attention_name => [:attention, :attention_name],
+          :tax_id => [:tax_id, :tax_identification_number]
         }
         attributes = {}
         hash_access = begin
@@ -104,7 +112,9 @@ module ActiveMerchant #:nodoc:
           :phone => phone,
           :fax => fax,
           :address_type => address_type,
-          :company_name => company_name
+          :company_name => company_name,
+          :attention_name => attention_name,
+          :tax_id => tax_id
         }
       end
 
