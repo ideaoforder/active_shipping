@@ -354,9 +354,12 @@ module ActiveMerchant
       # See Ship-WW-XML.pdf for API info
        # @image_type = [GIF|EPL] 
       def build_label_request(origin, destination, packages, options={})
-       # @required = [:ups_license_number, :ups_shipper_number, :ups_user, :ups_password]
-       # @required +=  [:phone, :email, :company, :address, :city, :state, :zip]
-       # @required += [:sender_phone, :sender_email, :sender_company, :sender_address, :sender_city, :sender_state, :sender_zip ]
+        # @required = :origin_account, 
+        # @destination +=  [:phone, :email, :company, :address, :city, :state, :zip]
+        # @shipper += [:sender_phone, :sender_email, :sender_company, :sender_address, :sender_city, :sender_state, :sender_zip ]
+        missing_required = Array.new
+        errors = Array.new
+
         packages = Array(packages)
         pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
 
@@ -380,22 +383,28 @@ module ActiveMerchant
             
             shipment << build_location_node('Shipper', (options[:shipper] || origin), options)
             shipment << build_location_node('ShipTo', destination, options)
+
             if options[:shipper] and options[:shipper] != origin
-              shipment << build_location_node('ShipFrom', origin, options)
+              ship_from = options[:shipper]
+            else
+              ship_from = origin
             end
+            # TODO: validate alias methods too
+            for field in %w[phone email company_name address1 city state zip country]
+              missing_required << "Shipper #{field}" if ship_from.send(field).blank?
+            end
+            shipment << build_location_node('ShipFrom', ship_from, options)
 
-
-          
             shipment << XmlNode.new('PaymentInformation') do |payment|
               pay_type = PAYMENT_TYPES[options[:pay_type]] || 'Prepaid'
 
               if pay_type == 'Prepaid'
                 payment << XmlNode.new('Prepaid') do |prepaid|
                   prepaid << XmlNode.new('BillShipper') do |bill_shipper|
-                    if options[:origin_account]
+                    if options[:origin_account] and !options[:origin_account].blank?
                       bill_shipper << XmlNode.new('AccountNumber', options[:origin_account])
                     else
-                      puts "We need an origin account!"
+                      missing_required << "Shipper number (origin_account)"
                     end
                   end
                 end
@@ -418,8 +427,7 @@ module ActiveMerchant
                   end
                 end
               else
-                # raise ShippingError, "Valid pay_types are 'prepaid', 'bill_third_party', or 'freight_collect'."
-                puts "OH Noes! We need to figure out how to raise an error!"
+                errors << "Valid pay_types are 'prepaid', 'bill_third_party', or 'freight_collect'."
               end
             end # end payment node
           
@@ -483,12 +491,21 @@ module ActiveMerchant
                 lstock_size << XmlNode.new('Width', '6')
               end
             else
-              # raise ShippingError, "Valid image_types are 'EPL' or 'GIF'."
-              puts "Oh Noes! We don't know what to do with errors!"
+              errors << "Valid image_types are 'EPL' or 'GIF'."
             end
           end # end Label Spec
           
         end # end ShipmentConfirmRequest
+
+        # There are a lot of required fields for the label request to work
+        # We collect them all in one error, so it doesn't take folks 20 tries to construct a working request
+        if missing_required.length > 0
+          errors << "UPS labels require: #{missing_required.join(', ')}"
+        end
+
+        # Now we spit out all of the errors; 
+        # We don't even want to make the request if we know it won't go through
+        raise ArgumentError.new(errors.join('; '))
         
         access_request = build_access_request
         label_request = xml_request.to_s

@@ -17,6 +17,7 @@ module ActiveMerchant #:nodoc:
                   :address_type,
                   :company_name,
                   :attention_name,
+                  :email,
                   :tax_id
       
       alias_method :zip, :postal_code
@@ -27,6 +28,7 @@ module ActiveMerchant #:nodoc:
       alias_method :company, :company_name
       alias_method :attention, :attention_name
       alias_method :tax_identification_number, :tax_id
+      alias_method :email_address, :email
       
       def initialize(options = {})
         @country = (options[:country].nil? or options[:country].is_a?(ActiveMerchant::Country)) ?
@@ -44,6 +46,7 @@ module ActiveMerchant #:nodoc:
         @company_name = options[:company_name] || options[:company]
         @attention_name = options[:attention_name] || options[:attention]
         @tax_id = options[:tax_id] || options[:tax_identification_number]
+        @email = options[:email] || options[:email_address]
 
         self.address_type = options[:address_type]
       end
@@ -64,6 +67,7 @@ module ActiveMerchant #:nodoc:
           :address_type => [:address_type],
           :company_name => [:company, :company_name],
           :attention_name => [:attention, :attention_name],
+          :email => [:email, :email_address],
           :tax_id => [:tax_id, :tax_identification_number]
         }
         attributes = {}
@@ -114,7 +118,8 @@ module ActiveMerchant #:nodoc:
           :address_type => address_type,
           :company_name => company_name,
           :attention_name => attention_name,
-          :tax_id => tax_id
+          :tax_id => tax_id,
+          :email => email
         }
       end
 
