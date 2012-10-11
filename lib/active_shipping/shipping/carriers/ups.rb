@@ -3,6 +3,7 @@
 module ActiveMerchant
   module Shipping
     class UPS < Carrier
+      require 'tempfile'
       self.retry_safe = true
       
       cattr_accessor :default_options
@@ -16,7 +17,8 @@ module ActiveMerchant
         :rates => 'ups.app/xml/Rate',
         :track => 'ups.app/xml/Track',
         :time => 'ups.app/xml/TimeInTransit',
-        :label => 'ups.app/xml/ShipConfirm'
+        :label => 'ups.app/xml/ShipConfirm',
+        :accept => 'ups.app/xml/ShipAccept'
       }
       
       PICKUP_CODES = HashWithIndifferentAccess.new({
@@ -150,8 +152,18 @@ module ActiveMerchant
         
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
-        puts req.to_s
-        response = commit(:rates, save_request(req), (options[:test] || true))
+        response = commit(:label, save_request(req), (options[:test] || true))
+        
+        begin
+          xml = REXML::Document.new(response)
+          shipment_digest = xml.elements['/*/ShipmentDigest'].text
+        rescue => e
+          raise ArgumentError, e.inspect
+        end
+
+        accept_request = build_accept_request(shipment_digest)
+        req = access_request + accept_request
+        response = commit(:accept, save_request(req), (options[:test] || true))
         parse_label_response(origin, destination, packages, response, options)
       end
       
@@ -381,19 +393,23 @@ module ActiveMerchant
             end
             shipment << XmlNode.new('Description', options[:description])
             
-            shipment << build_location_node('Shipper', (options[:shipper] || origin), options)
+            shipment << build_location_node('ShipFrom', origin, options)
+
+           for field in %w[address1 company_name city state zip country]
+              missing_required << "ShipTo #{field}" if destination.send(field).blank?
+            end
             shipment << build_location_node('ShipTo', destination, options)
 
             if options[:shipper] and options[:shipper] != origin
-              ship_from = options[:shipper]
+              shipper = options[:shipper]
             else
-              ship_from = origin
+              shipper = origin
             end
             # TODO: validate alias methods too
-            for field in %w[phone email company_name address1 city state zip country]
-              missing_required << "Shipper #{field}" if ship_from.send(field).blank?
+            for field in %w[phone email name company_name address1 city state zip country]
+              missing_required << "Shipper #{field}" if shipper.send(field).blank?
             end
-            shipment << build_location_node('ShipFrom', ship_from, options)
+            shipment << build_location_node('Shipper', shipper, options)
 
             shipment << XmlNode.new('PaymentInformation') do |payment|
               pay_type = PAYMENT_TYPES[options[:pay_type]] || 'Prepaid'
@@ -499,108 +515,27 @@ module ActiveMerchant
 
         # There are a lot of required fields for the label request to work
         # We collect them all in one error, so it doesn't take folks 20 tries to construct a working request
-        if missing_required.length > 0
-          errors << "UPS labels require: #{missing_required.join(', ')}"
-        end
+        errors << "UPS labels require: #{missing_required.join(', ')}" if missing_required.length > 0
 
         # Now we spit out all of the errors; 
         # We don't even want to make the request if we know it won't go through
-        raise ArgumentError.new(errors.join('; '))
-        
-        access_request = build_access_request
-        label_request = xml_request.to_s
-        req = access_request + label_request
-        puts req.to_s
-        response = commit(:label, save_request(req), (options[:test] || true))
-        
-        # xml = REXML::Document.new(response)
-        #     success = response_success?(xml)
-        #     message = response_message(xml)
-        #     
-        #     if success
-        # 
-        # 
-        #      # get ConfirmResponse
-        #      get_response @ups_url + @ups_tool
-        #      begin
-        #        shipment_digest = REXML::XPath.first(@response, '//ShipmentConfirmResponse/ShipmentDigest').text
-        #      rescue
-        #        raise ShippingError, get_error
-        #      end
-        # 
-        #      # make AcceptRequest and get AcceptResponse
-        #      @ups_tool = '/ShipAccept'
-        # 
-        #      b = request_access
-        #      b.instruct!
-        # 
-        #      b.ShipmentAcceptRequest { |b|
-        #        b.Request { |b|
-        #          b.RequestAction "ShipAccept"
-        #          b.TransactionReference { |b|
-        #            b.CustomerContext "#{@city}, #{state} #{@zip}"
-        #            b.XpciVersion API_VERSION
-        #          }
-        #        }
-        #        b.ShipmentDigest shipment_digest
-        #      }
-        # 
-        #      # get AcceptResponse
-        #      get_response @ups_url + @ups_tool
-        # 
-        #      begin  
-        #        response = Hash.new       
-        #        if @single_package
-        #          response[:tracking_number] = REXML::XPath.first(@response, "//ShipmentAcceptResponse/ShipmentResults/PackageResults/TrackingNumber").text
-        #          response[:encoded_image] = REXML::XPath.first(@response, "//ShipmentAcceptResponse/ShipmentResults/PackageResults/LabelImage/GraphicImage").text
-        #          extension = REXML::XPath.first(@response, "//ShipmentAcceptResponse/ShipmentResults/PackageResults/LabelImage/LabelImageFormat/Code").text
-        #          response[:image] = Tempfile.new(["shipping_label", '.' + extension.downcase])
-        #          response[:image].write Base64.decode64( response[:encoded_image] )
-        #          response[:image].rewind
-        # 
-        #          # if this package has a high insured value
-        #          high_value_report = REXML::XPath.first(@response, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
-        #          if high_value_report
-        #            extension = REXML::XPath.first(@response, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code").text
-        #            response[:encoded_high_value_report] = high_value_report.text
-        #            response[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase])
-        #            response[:high_value_report].write Base64.decode64( response[:encoded_high_value_report] )
-        #            response[:high_value_report].rewind
-        #          end
-        #        else
-        #          response[:packages] = []
-        #          REXML::XPath.each(@response, "//ShipmentAcceptResponse/ShipmentResults/PackageResults") do |package_element|
-        #            response[:packages] << {}
-        #            response[:packages].last[:tracking_number] = REXML::XPath.first(package_element, "TrackingNumber").text
-        #            response[:packages].last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/GraphicImage").text
-        #            extension = response[:packages].last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/LabelImageFormat/Code").text
-        #            response[:packages].last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase])
-        #            response[:packages].last[:label_file].write Base64.decode64( response[:packages].last[:encoded_label] )
-        #            response[:packages].last[:label_file].rewind
-        # 
-        #            # if this package has a high insured value
-        #            high_value_report = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
-        #            if high_value_report
-        #              extension = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code").text
-        #              response[:packages].last[:encoded_high_value_report] = high_value_report.text
-        #              response[:packages].last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase])
-        #              response[:packages].last[:high_value_report].write Base64.decode64( response[:packages].last[:encoded_high_value_report] )
-        #              response[:packages].last[:high_value_report].rewind
-        #            end
-        #          end
-        #        end
-        #      rescue
-        #        raise ShippingError, get_error
-        #      end
-        # 
-        #      # allows for things like fedex.label.url
-        #      def response.method_missing(name, *args)
-        #        has_key?(name) ? self[name] : super
-        #      end
-        # 
-        #      # don't allow people to edit the response
-        #      response.freeze
+        raise ArgumentError.new(errors.join('; ')) if errors.length > 0
+
+        xml_request.to_s
       end      
+
+      def build_accept_request(shipment_digest, description='Shipping Label')
+        xml_request = XmlNode.new('ShipmentAcceptRequest') do |root_node|
+          root_node << XmlNode.new('Request') do |request|
+            request << XmlNode.new('RequestAction', 'ShipAccept')
+            request << XmlNode.new('TransactionReference') do |ref|
+              ref << XmlNode.new('CustomerContext', description)
+            end
+            root_node << XmlNode.new('ShipmentDigest', shipment_digest)
+          end
+        end
+        xml_request.to_s
+      end
             
       def build_location_node(name,location,options={})
         location_node = XmlNode.new(name) do |location_node|
@@ -794,6 +729,36 @@ module ActiveMerchant
           :tracking_number => tracking_number)
       end
       
+      def parse_label_response(origin, destination, packages, response, options={})
+        xml = REXML::Document.new(response)
+        success = response_success?(xml)
+        message = response_message(xml)
+        
+        if success
+          package_labels = []
+          xml.elements.each('//ShipmentAcceptResponse/ShipmentResults/PackageResults') do |package_element|
+            package_labels << {}
+            package_labels.last[:tracking_number] = REXML::XPath.first(package_element, "TrackingNumber").text
+            package_labels.last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/GraphicImage").text
+            extension = package_labels.last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/LabelImageFormat/Code").text
+            package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase])
+            package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label] )
+            package_labels.last[:label_file].rewind
+            
+            # if this package has a high insured value
+            high_value_report = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
+            if high_value_report
+              extension = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code").text
+              package_labels.last[:encoded_high_value_report] = high_value_report.text
+              package_labels.last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase])
+              package_labels.last[:high_value_report].write Base64.decode64( package_labels.last[:encoded_high_value_report] )
+              package_labels.last[:high_value_report].rewind
+            end
+          end
+        end
+        LabelResponse.new(success, message, Hash.from_xml(response).values.first, :package_labels => package_labels)
+      end
+
       def location_from_address_node(address)
         return nil unless address
         Location.new(
