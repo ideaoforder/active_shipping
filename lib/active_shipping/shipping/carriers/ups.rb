@@ -154,11 +154,17 @@ module ActiveMerchant
         req = access_request + label_request
         response = commit(:label, save_request(req), (options[:test] || true))
         
-        begin
-          xml = REXML::Document.new(response)
-          shipment_digest = xml.elements['/*/ShipmentDigest'].text
-        rescue => e
-          raise ArgumentError, e.inspect
+        xml = REXML::Document.new(response)
+        success = response_success?(xml)
+        message = response_message(xml)
+        if success
+          begin
+            shipment_digest = xml.elements['/*/ShipmentDigest'].text
+          rescue => e
+            raise ArgumentError, e.inspect
+          end
+        else
+          raise ArgumentError, message
         end
 
         accept_request = build_accept_request(shipment_digest)
@@ -738,20 +744,21 @@ module ActiveMerchant
           package_labels = []
           xml.elements.each('//ShipmentAcceptResponse/ShipmentResults/PackageResults') do |package_element|
             package_labels << {}
-            package_labels.last[:tracking_number] = REXML::XPath.first(package_element, "TrackingNumber").text
-            package_labels.last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/GraphicImage").text
-            extension = package_labels.last[:encoded_label] = REXML::XPath.first(package_element, "LabelImage/LabelImageFormat/Code").text
+            # package_labels.last[:tracking_number] = REXML::XPath.first(package_element, "TrackingNumber").text
+            package_labels.last[:tracking_number] = package_element.get_text("TrackingNumber")
+            package_labels.last[:encoded_label] = package_element.get_text("LabelImage/GraphicImage")
+            extension = package_element.get_text("LabelImage/LabelImageFormat/Code").to_s
             package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase])
-            package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label] )
+            package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label].value )
             package_labels.last[:label_file].rewind
             
             # if this package has a high insured value
-            high_value_report = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
+            high_value_report = package_element.get_text("//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
             if high_value_report
-              extension = REXML::XPath.first(package_element, "//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code").text
-              package_labels.last[:encoded_high_value_report] = high_value_report.text
+              extension = package_element.get_text("//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code")
+              package_labels.last[:encoded_high_value_report] = high_value_report
               package_labels.last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase])
-              package_labels.last[:high_value_report].write Base64.decode64( package_labels.last[:encoded_high_value_report] )
+              package_labels.last[:high_value_report].write Base64.decode64( package_labels.last[:encoded_high_value_report].value )
               package_labels.last[:high_value_report].rewind
             end
           end
