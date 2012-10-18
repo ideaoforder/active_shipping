@@ -28,6 +28,8 @@ module ActiveMerchant
       
       TEST_RESOURCE = 'ShippingAPITest.dll'
       
+      # TODO: we should also attempt to grab estimate delivery dates, if desired
+      # https://www.usps.com/webtools/htm/DomMailServStandv1-4.htm
       API_CODES = {
         :us_rates => 'RateV4',
         :world_rates => 'IntlRateV2',
