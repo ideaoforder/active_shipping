@@ -74,8 +74,40 @@ module ActiveMerchant
         :parcel => 'PARCEL',
         :media => 'MEDIA',
         :library => 'LIBRARY',
-        :all => 'ALL'
+        :all => 'ALL',
+        :online => 'ONLINE',
+        # Commercial rates
+        :first_class_commercial => 'FIRST CLASS COMMERCIAL',
+        :priority_commercial => 'PRIORITY COMMERCIAL',
+        :express_commercial => 'EXPRESS COMMERCIAL',
+        # Commercial Plus rates
+        :first_class_commercial_plus => 'FIRST CLASS HFP COMMERCIAL',
+        :priority_commercial_plus => 'PRIORITY HFP COMMERCIAL',
+        :express_commercial_plus => 'EXPRESS HFP COMMERCIAL'
       }
+
+      # Here are the actual options
+      # TODO: We need to add in :rate_type (retail, commercial, commercial_plus)
+      # FIRST CLASS
+      # FIRST CLASS COMMERCIAL
+      # FIRST CLASS  HFP COMMERCIAL
+
+      # PRIORITY
+      # PRIORITY COMMERCIAL
+      # PRIORITY HFP COMMERCIAL
+
+      # EXPRESS
+      # EXPRESS COMMERCIAL
+      # EXPRESS SH
+      # EXPRESS SH COMMERCIAL
+      # EXPRESS HFP
+      # EXPRESS HFP COMMERCIAL
+
+      # PARCEL
+      # MEDIA
+      # LIBRARY
+      # ALL
+      # ONLINE 
       
       # TODO: get rates for "U.S. possessions and Trust Territories" like Guam, etc. via domestic rates API: http://www.usps.com/ncsc/lookups/abbr_state.txt
       # TODO: figure out how USPS likes to say "Ivory Coast"
@@ -273,6 +305,7 @@ module ActiveMerchant
       end
       
       def parse_rate_response(origin, destination, packages, response, options={})
+        puts response.inspect
         success = true
         message = ''
         rate_hash = {}
@@ -347,6 +380,7 @@ module ActiveMerchant
             package_rates = this_service[:package_rates] ||= []
             this_package_rate = {:package => this_package,
                                  :rate => Package.cents_from(service_response_node.get_text(rate_node).to_s.to_f)}
+            this_package_rate.merge(:commercial_rate => Package.cents_from(service_response_node.get_text('CommercialRate').to_s.to_f)) if !service_response_node.get_text('CommercialRate').nil?
             
             package_rates << this_package_rate if package_valid_for_service(this_package,service_response_node)
           end
