@@ -70,6 +70,7 @@ module ActiveMerchant
         :first_class => 'FIRST CLASS',
         :priority => 'PRIORITY',
         :express => 'EXPRESS',
+        :express_sh => 'EXPRESS SH',
         :bpm => 'BPM',
         :parcel => 'PARCEL',
         :media => 'MEDIA',
@@ -80,34 +81,12 @@ module ActiveMerchant
         :first_class_commercial => 'FIRST CLASS COMMERCIAL',
         :priority_commercial => 'PRIORITY COMMERCIAL',
         :express_commercial => 'EXPRESS COMMERCIAL',
+        :express_sh_commercial => 'EXPRESS SH COMMERCIAL',
         # Commercial Plus rates
         :first_class_commercial_plus => 'FIRST CLASS HFP COMMERCIAL',
         :priority_commercial_plus => 'PRIORITY HFP COMMERCIAL',
         :express_commercial_plus => 'EXPRESS HFP COMMERCIAL'
       }
-
-      # Here are the actual options
-      # TODO: We need to add in :rate_type (retail, commercial, commercial_plus)
-      # FIRST CLASS
-      # FIRST CLASS COMMERCIAL
-      # FIRST CLASS  HFP COMMERCIAL
-
-      # PRIORITY
-      # PRIORITY COMMERCIAL
-      # PRIORITY HFP COMMERCIAL
-
-      # EXPRESS
-      # EXPRESS COMMERCIAL
-      # EXPRESS SH
-      # EXPRESS SH COMMERCIAL
-      # EXPRESS HFP
-      # EXPRESS HFP COMMERCIAL
-
-      # PARCEL
-      # MEDIA
-      # LIBRARY
-      # ALL
-      # ONLINE 
       
       # TODO: get rates for "U.S. possessions and Trust Territories" like Guam, etc. via domestic rates API: http://www.usps.com/ncsc/lookups/abbr_state.txt
       # TODO: figure out how USPS likes to say "Ivory Coast"
@@ -305,7 +284,6 @@ module ActiveMerchant
       end
       
       def parse_rate_response(origin, destination, packages, response, options={})
-        puts response.inspect
         success = true
         message = ''
         rate_hash = {}
@@ -378,11 +356,22 @@ module ActiveMerchant
             this_service = rate_hash[service_name] ||= {}
             this_service[:service_code] ||= service_response_node.attributes[service_code_node]
             package_rates = this_service[:package_rates] ||= []
-            this_package_rate = {:package => this_package,
-                                 :rate => Package.cents_from(service_response_node.get_text(rate_node).to_s.to_f)}
-            this_package_rate.merge(:commercial_rate => Package.cents_from(service_response_node.get_text('CommercialRate').to_s.to_f)) if !service_response_node.get_text('CommercialRate').nil?
-            
-            package_rates << this_package_rate if package_valid_for_service(this_package,service_response_node)
+
+            # NOTE: If we've got commercial rates, we want to default to those
+            # Another approach would be to return both, but at present the system seems designed
+            # elsewhere to return one set of rates, and we want to play nicely with the overarching system
+            # Commercial rates are only returned for FIRST CLASS COMMERCIAL, FIRST CLASS HFP COMMERCIAL, PRIORITY COMMERCIAL, PRIORITY HFP COMMERCIAL, EXPRESS COMMERCIAL, EXPRESS SH COMMERCIAL, EXPRESS HFP COMMERCIAL, ONLINE
+            # NOTE: the commercial and online rates only seem to vary for Express
+            if !service_response_node.get_text('CommercialRate').blank? and service_response_node.get_text('CommercialRate').to_s.to_f > 0.0
+              rate_node = 'CommercialRate'
+            end
+            # We don't want to return an empty rate; If we don't have any value, leave it out
+            unless service_response_node.get_text(rate_node).to_s.blank?
+              this_package_rate = {:package => this_package,
+                                   :rate => Package.cents_from(service_response_node.get_text(rate_node).to_s.to_f)}
+              
+              package_rates << this_package_rate if package_valid_for_service(this_package,service_response_node)
+            end
           end
         end
         rate_hash
