@@ -16,7 +16,6 @@ module ActiveMerchant
       RESOURCES = {
         :rates => 'ups.app/xml/Rate',
         :track => 'ups.app/xml/Track',
-        :time => 'ups.app/xml/TimeInTransit',
         :label => 'ups.app/xml/ShipConfirm',
         :accept => 'ups.app/xml/ShipAccept'
       }
@@ -132,18 +131,6 @@ module ActiveMerchant
         parse_tracking_response(response, options)
       end
       
-      def find_transit_time(origin, destination, packages, options={})
-        origin, destination = upsified_location(origin), upsified_location(destination)
-        options = @options.merge(options)
-        packages = Array(packages)
-        access_request = '<?xml version="1.0" encoding="UTF-8"?>' + build_access_request
-        transit_time_request = '<?xml version="1.0" encoding="UTF-8"?>' + build_transit_time_request(origin, destination, packages, options)
-        req = access_request + transit_time_request
-        puts req.to_s
-        response = commit(:time, save_request(req), (options[:test] || false))
-        parse_transit_time_response(origin, destination, packages, response, options)
-      end
-      
       def get_label(origin, destination, packages, options={})
         origin, destination = upsified_location(origin), upsified_location(destination)
         options = @options.merge(options)
@@ -152,7 +139,7 @@ module ActiveMerchant
         
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
-        response = commit(:label, save_request(req), (options[:test] || true))
+        response = commit(:label, save_request(req), (options[:test] || false))
         
         xml = REXML::Document.new(response)
         success = response_success?(xml)
@@ -179,6 +166,14 @@ module ActiveMerchant
         if location.country_code == 'US' && US_TERRITORIES_TREATED_AS_COUNTRIES.include?(location.state)
           atts = {:country => location.state}
           [:zip, :city, :address1, :address2, :address3, :phone, :fax, :address_type].each do |att|
+            atts[att] = location.send(att)
+          end
+          Location.new(atts)
+        elsif !%w[CA US].include? location.country_code(:alpha2)
+          atts = {}
+          keys = location.to_hash.keys
+          keys.delete(:province)
+          keys.each do |att|
             atts[att] = location.send(att)
           end
           Location.new(atts)
@@ -292,82 +287,6 @@ module ActiveMerchant
         end
         xml_request.to_s
       end
-      
-      def build_transit_time_request(origin, destination, packages, options={})
-        packages = Array(packages)
-        shipper_city = options[:shipper][:city] if options[:shipper] and options[:shipper][:city]
-        shipper_state = options[:shipper][:state] if options[:shipper] and options[:shipper][:state]
-        shipper_country = options[:shipper][:country] if options[:shipper] and options[:shipper][:country]
-        shipper_zip = options[:shipper][:zip] if options[:shipper] and options[:shipper][:zip]
-        pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
-        
-        xml_request = XmlNode.new('TimeInTransitRequest') do |root_node|
-          root_node << XmlNode.new('Request') do |request|
-            request << XmlNode.new('RequestAction', 'TimeInTransit')
-          end
-          
-          root_node << XmlNode.new('CustomerContext', 'Time in Transit Request')
-          # NOTE: TimeInTransit is only supported in XPCI 1.0001
-          root_node << XmlNode.new('XpciVersion', '1.0001')
-
-          # pickup_type = options[:pickup_type] || :daily_pickup
-          # 
-          # root_node << XmlNode.new('PickupType') do |pickup_type_node|
-          #   pickup_type_node << XmlNode.new('Code', PICKUP_CODES[pickup_type])
-          #   # not implemented: PickupType/PickupDetails element
-          # end
-          # cc = options[:customer_classification] || DEFAULT_CUSTOMER_CLASSIFICATIONS[pickup_type]
-          # root_node << XmlNode.new('CustomerClassification') do |cc_node|
-          #   cc_node << XmlNode.new('Code', CUSTOMER_CLASSIFICATIONS[cc])
-          # end
-
-          root_node << XmlNode.new('TransitFrom') do |from|
-            from << XmlNode.new('AddressArtifactFormat') do |address|
-              address << XmlNode.new('PoliticalDivision2', shipper_city || origin.city) # city
-              address << XmlNode.new('PoliticalDivision1', shipper_state || origin.state) # state
-              address << XmlNode.new('CountryCode', shipper_country || origin.country_code(:alpha2)) # 2 -digit country
-              address << XmlNode.new('PostCodePrimaryLow', shipper_zip || origin.zip) # zip
-            end
-          end
-          
-          root_node << XmlNode.new('TransitTo') do |from|
-            from << XmlNode.new('AddressArtifactFormat') do |address|
-              address << XmlNode.new('PoliticalDivision2', destination.city) # city
-              address << XmlNode.new('PoliticalDivision1', destination.state) # state
-              address << XmlNode.new('CountryCode', destination.country_code(:alpha2)) # 2 -digit country
-              address << XmlNode.new('PostCodePrimaryLow', destination.zip) # zip
-              unless destination.commercial?
-                address << XmlNode.new('ResidentialAddressIndicator')
-              end
-            end
-          end
-          
-          root_node << XmlNode.new('PickupDate', pickup_date)
-          
-          root_node << XmlNode.new('ShipmentWeight') do |shipment_weight|
-            imperial = ['US','LR','MM'].include?(origin.country_code(:alpha2))
-            
-            shipment_weight << XmlNode.new("UnitOfMeasurement") do |units|
-              units << XmlNode.new("Code", imperial ? 'LBS' : 'KGS')
-            end
-            
-            total_weight = 0.0
-            packages.each do |package|
-              total_weight += ((imperial ? package.lbs : package.kgs).to_f*1000).round/1000.0 # 3 decimals
-            end
-            shipment_weight << XmlNode.new("Weight", [total_weight,0.1].max)
-          end
-          
-          root_node << XmlNode.new('TotalPackagesInShipment', packages.length)
-          
-          root_node << XmlNode.new('InvoiceLineTotal') do |invoice|
-            invoice << XmlNode.new('CurrencyCode', options[:currency_code] || 'US')
-            invoice << XmlNode.new('MonetaryValue', options[:insured_value] || 0)
-          end
-
-        end
-        xml_request.to_s
-      end
             
       # See Ship-WW-XML.pdf for API info
        # @image_type = [GIF|EPL] 
@@ -401,7 +320,12 @@ module ActiveMerchant
             
             shipment << build_location_node('ShipFrom', origin, options)
 
-           for field in %w[address1 company_name city state zip country]
+            for field in %w[address1 company_name city zip country]
+              missing_required << "ShipTo #{field}" if destination.send(field).blank?
+            end
+
+            # State/Province is only required for US/Canada
+            if !%w[GB US].include? destination.country_code(:alpha2)
               missing_required << "ShipTo #{field}" if destination.send(field).blank?
             end
             shipment << build_location_node('ShipTo', destination, options)
@@ -605,38 +529,6 @@ module ActiveMerchant
         RateResponse.new(success, message, Hash.from_xml(response).values.first, :rates => rate_estimates, :xml => response, :request => last_request)
       end
       
-      def parse_transit_time_response(origin, destination, packages, response, options={})
-        puts response.inspect
-        xml = REXML::Document.new(response)
-        success = response_success?(xml)
-        message = response_message(xml)
-        
-        if success
-          times = {}
-          
-          xml.elements.each('/*/ServiceSummary') do |timed_shipment|
-            service_code = timed_shipment.get_text('Service/Code').to_s
-            times[service_code] = {
-              :service_name => service_name_for(origin, service_code),
-              # :service => ServiceTimes.index(index),
-              :days => timed_shipment.get_text("EstimatedArrival/BusinessTransitDays").to_i,
-              :date => timed_shipment.get_text("EstimatedArrival/Date").to_date,
-              :time => timed_shipment.get_text("EstimatedArrival/Time"),
-              }
-
-            # rate_estimates << RateEstimate.new(origin, destination, @@name,
-            #                     service_name_for(origin, service_code),
-            #                     :total_price => rated_shipment.get_text('TotalCharges/MonetaryValue').to_s.to_f,
-            #                     :currency => rated_shipment.get_text('TotalCharges/CurrencyCode').to_s,
-            #                     :service_code => service_code,
-            #                     :packages => packages,
-            #                     :delivery_range => [timestamp_from_business_day(days_to_delivery)])
-          end
-        end
-        # RateResponse.new(success, message, Hash.from_xml(response).values.first, :rates => rate_estimates, :xml => response, :request => last_request)
-        return times
-      end
-      
       def parse_tracking_response(response, options={})
         xml = REXML::Document.new(response)
         success = response_success?(xml)
@@ -744,8 +636,7 @@ module ActiveMerchant
           package_labels = []
           xml.elements.each('//ShipmentAcceptResponse/ShipmentResults/PackageResults') do |package_element|
             package_labels << {}
-            # package_labels.last[:tracking_number] = REXML::XPath.first(package_element, "TrackingNumber").text
-            package_labels.last[:tracking_number] = package_element.get_text("TrackingNumber")
+            package_labels.last[:tracking_number] = package_element.get_text("TrackingNumber").to_s
             package_labels.last[:encoded_label] = package_element.get_text("LabelImage/GraphicImage")
             extension = package_element.get_text("LabelImage/LabelImageFormat/Code").to_s
             package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase])
