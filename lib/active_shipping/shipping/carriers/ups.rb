@@ -156,7 +156,7 @@ module ActiveMerchant
 
         accept_request = build_accept_request(shipment_digest)
         req = access_request + accept_request
-        response = commit(:accept, save_request(req), (options[:test] || true))
+        response = commit(:accept, save_request(req), (options[:test] || false))
         parse_label_response(origin, destination, packages, response, options)
       end
       
