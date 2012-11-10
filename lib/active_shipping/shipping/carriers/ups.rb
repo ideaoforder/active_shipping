@@ -138,6 +138,7 @@ module ActiveMerchant
         access_request = build_access_request
         
         label_request = build_label_request(origin, destination, packages, options)
+        puts label_request
         req = access_request + label_request
         response = commit(:label, save_request(req), (options[:test] || false))
         
@@ -361,7 +362,13 @@ module ActiveMerchant
                     bt_shipper << XmlNode.new('ThirdParty') do |third_party|
                       third_party << XmlNode.new('Address') do |tp_address|
                         tp_address << XmlNode.new('PostalCode', options[:billing_zip])
-                        tp_address << XmlNode.new('CountryCode', options[:billing_country])
+                        country = options[:billing_country].nil? ? nil : ActiveMerchant::Country.find(options[:billing_country])
+                        if !country.blank?
+                          country_code = country.code(:alpha2).value
+                        else
+                          country_code = options[:billing_country]
+                        end
+                        tp_address << XmlNode.new('CountryCode', country_code)
                       end
                     end
                   end
