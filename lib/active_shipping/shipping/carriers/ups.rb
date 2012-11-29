@@ -17,6 +17,7 @@ module ActiveMerchant
         :rates => 'ups.app/xml/Rate',
         :track => 'ups.app/xml/Track',
         :label => 'ups.app/xml/ShipConfirm',
+        :void  => 'ups.app/xml/Void',
         :accept => 'ups.app/xml/ShipAccept'
       }
       
@@ -138,7 +139,6 @@ module ActiveMerchant
         access_request = build_access_request
         
         label_request = build_label_request(origin, destination, packages, options)
-        puts label_request
         req = access_request + label_request
         response = commit(:label, save_request(req), (options[:test] || false))
         
@@ -159,6 +159,15 @@ module ActiveMerchant
         req = access_request + accept_request
         response = commit(:accept, save_request(req), (options[:test] || false))
         parse_label_response(origin, destination, packages, response, options)
+      end
+
+      def void_label(shipping_id, tracking_numbers=[], options={})
+        access_request = build_access_request
+        void_request = build_void_request(shipping_id, tracking_numbers)
+        # NOTE: For some reason, this request requires the xml version
+        req = '<?xml version="1.0"?>' + access_request + '<?xml version="1.0"?>' + void_request
+        response = commit(:void, save_request(req), (options[:test] || false))
+        parse_void_response(response, tracking_numbers)
       end
       
       protected
@@ -473,7 +482,33 @@ module ActiveMerchant
         end
         xml_request.to_s
       end
-            
+
+      # This voids a shipment
+      # if multiple tracking numbers are passed in, it will attempt to void them all in a single call
+      # if ANY of them fails, we return false and hand over the array of results
+      def build_void_request(shipping_id, tracking_numbers = [])
+        xml_request = XmlNode.new('VoidShipmentRequest') do |root_node|
+          root_node << XmlNode.new('Request') do |request|
+            request << XmlNode.new('RequestAction', 'Void')
+            request << XmlNode.new('TransactionReference') do |ref|
+              ref << XmlNode.new('CustomerContext', "Void Label")
+            end
+          end
+          if tracking_numbers.length > 1
+            root_node << XmlNode.new('ExpandedVoidShipment') do |evs|
+              evs << XmlNode.new('RequestAction', 'Void')
+              evs << XmlNode.new('ShipmentIdentificationNumber', shipping_id)
+              for num in tracking_numbers
+                evs << XmlNode.new('TrackingNumber', num)
+              end
+            end
+          else
+            root_node << XmlNode.new('ShipmentIdentificationNumber', shipping_id)
+          end
+        end
+        xml_request.to_s
+      end
+
       def build_location_node(name,location,options={})
         location_node = XmlNode.new(name) do |location_node|
           location_node << XmlNode.new('PhoneNumber', location.phone.gsub(/[^\d]/,'')) unless location.phone.blank?
@@ -663,6 +698,36 @@ module ActiveMerchant
         end
         LabelResponse.new(success, message, Hash.from_xml(response).values.first, :package_labels => package_labels)
       end
+
+    def parse_void_response(response, tracking_numbers=[])
+      xml = REXML::Document.new(response)
+      success = response_success?(xml)
+      message = response_message(xml)
+
+      if tracking_numbers.length > 1
+        status = true
+        multiple_response = Hash.new
+        xml.elements.each('//VoidShipmentResponse/PackageLevelResults') do |package_element|
+          tracking_number = package_element.get_text("TrackingNumber").to_s
+          response_code = package_element.get_text("StatusCode/Code").to_i
+          multiple_response[tracking_number] = response_code
+          status = false if response_code != 1
+        end
+        if status == true
+          return true
+        else
+          return multiple_response
+        end
+      else
+        status = xml.get_text('//VoidShipmentResponse/Response/ResponseStatusCode').to_s
+        # TODO: we may need a more detailed error message in the event that one package is voided and the other isn't
+        if status == '1'
+          return true
+        else
+          return message
+        end
+      end
+    end
 
       def location_from_address_node(address)
         return nil unless address
