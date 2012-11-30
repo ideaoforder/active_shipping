@@ -427,13 +427,27 @@ module ActiveMerchant
                   value = ((imperial ? package.lbs : package.kgs).to_f*1000).round/1000.0 # 3 decimals
                   package_weight << XmlNode.new("Weight", [value,0.1].max)
                 end
+
+                if package.options[:insurance] or package.options[:delivery_confirmation]
+                  package_node << XmlNode.new("PackageServiceOptions") do |pso|
+                    if package.options[:insurance] and !package.value.blank? and package.value > 0.0
+                      pso << XmlNode.new("InsuredValue") do |insured_value|
+                        insured_value << XmlNode.new("CurrencyCode", package.currency || 'US')
+                        insured_value << XmlNode.new("MonetaryValue", package.value)
+                      end
+                    end
+                    if package.options[:delivery_confirmation]
+                      pso << XmlNode.new("DeliveryConfirmation") do |dc|
+                        dc << XmlNode.new("DCISType", package.options[:delivery_confirmation])
+                      end
+                    end
+                  end
+                end
             
                 # not implemented:  * Shipment/Package/LargePackageIndicator element
                 #                   * Shipment/Package/ReferenceNumber element
-                #                   * Shipment/Package/PackageServiceOptions element
                 #                   * Shipment/Package/AdditionalHandling element  
               end
-              # TODO: we'll need insurance value and the like to be validated
             end # end Packages
           end # end Shipment
           root_node << XmlNode.new('LabelSpecification') do |label_spec|
