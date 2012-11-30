@@ -396,6 +396,13 @@ module ActiveMerchant
             shipment << XmlNode.new('Service') do |service|
               service << XmlNode.new('Code', DEFAULT_SERVICES.invert[options[:service_type]] || '03')  # defaults to ground
             end
+
+            if origin.country_code == 'US' and (destination.country_code == 'CA' or destination.province == 'Puerto Rico')
+              shipment << XmlNode.new('InvoiceLineTotal') do |ilt|
+                ilt << XmlNode.new("CurrencyCode", options[:currency] || 'USD')
+                ilt << XmlNode.new("MonetaryValue", options[:value] || 1.0)
+              end
+            end
           
             packages.each do |package|
               imperial = ['US','LR','MM'].include?(origin.country_code(:alpha2))
@@ -432,7 +439,7 @@ module ActiveMerchant
                   package_node << XmlNode.new("PackageServiceOptions") do |pso|
                     if package.options[:insurance] and !package.value.blank? and package.value > 0.0
                       pso << XmlNode.new("InsuredValue") do |insured_value|
-                        insured_value << XmlNode.new("CurrencyCode", package.currency || 'US')
+                        insured_value << XmlNode.new("CurrencyCode", package.currency || 'USD')
                         insured_value << XmlNode.new("MonetaryValue", package.value)
                       end
                     end
@@ -442,13 +449,13 @@ module ActiveMerchant
                       end
                     end
                   end
-                end
-            
+                end  
                 # not implemented:  * Shipment/Package/LargePackageIndicator element
                 #                   * Shipment/Package/ReferenceNumber element
                 #                   * Shipment/Package/AdditionalHandling element  
               end
             end # end Packages
+
           end # end Shipment
           root_node << XmlNode.new('LabelSpecification') do |label_spec|
             image_type = options[:image_type] || 'GIF' # default to GIF
