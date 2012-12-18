@@ -309,6 +309,15 @@ module ActiveMerchant
 
         packages = Array(packages)
         pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
+        if options[:adult_signature_required]
+          options[:delivery_confirmation] = '1'
+        elsif options[:signature_required]
+          options[:delivery_confirmation] = '2'
+        elsif options[:delivery_confirmation]
+          options[:delivery_confirmation] = '3'
+        else
+          options[:delivery_confirmation] = false
+        end
 
         xml_request = XmlNode.new('ShipmentConfirmRequest') do |root_node|
           root_node << XmlNode.new('Request') do |request|
@@ -435,17 +444,24 @@ module ActiveMerchant
                   package_weight << XmlNode.new("Weight", [value,0.1].max)
                 end
 
-                if package.options[:insurance] or package.options[:delivery_confirmation]
+                if !options[:reference_number].blank? and !['UPS Worldwide Expedited', 'UPS Worldwide Express',  'UPS Worldwide Express Plus'].include?(options[:service_type])
+                  package_node << XmlNode.new("ReferenceNumber") do |ref_num|
+                    ref_num << XmlNode.new("Code", '02')
+                    ref_num << XmlNode.new("Value", options[:reference_number])
+                  end
+                end
+
+                if options[:insurance] or options[:delivery_confirmation]
                   package_node << XmlNode.new("PackageServiceOptions") do |pso|
-                    if package.options[:insurance] and !package.value.blank? and package.value > 0.0
+                    if options[:insurance] and !package.value.blank? and package.value > 0.0
                       pso << XmlNode.new("InsuredValue") do |insured_value|
                         insured_value << XmlNode.new("CurrencyCode", package.currency || 'USD')
                         insured_value << XmlNode.new("MonetaryValue", package.value)
                       end
                     end
-                    if package.options[:delivery_confirmation]
+                    if options[:delivery_confirmation]
                       pso << XmlNode.new("DeliveryConfirmation") do |dc|
-                        dc << XmlNode.new("DCISType", package.options[:delivery_confirmation])
+                        dc << XmlNode.new("DCISType", options[:delivery_confirmation])
                       end
                     end
                   end
