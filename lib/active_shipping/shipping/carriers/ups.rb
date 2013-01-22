@@ -718,7 +718,7 @@ module ActiveMerchant
             package_labels.last[:tracking_number] = package_element.get_text("TrackingNumber").to_s
             package_labels.last[:encoded_label] = package_element.get_text("LabelImage/GraphicImage")
             extension = package_element.get_text("LabelImage/LabelImageFormat/Code").to_s
-            package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase])
+            package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase], :encoding => 'ascii-8bit')
             package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label].value )
             package_labels.last[:label_file].rewind
             
@@ -727,7 +727,7 @@ module ActiveMerchant
             if high_value_report
               extension = package_element.get_text("//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code")
               package_labels.last[:encoded_high_value_report] = high_value_report
-              package_labels.last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase])
+              package_labels.last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase], :encoding => 'ascii-8bit')
               package_labels.last[:high_value_report].write Base64.decode64( package_labels.last[:encoded_high_value_report].value )
               package_labels.last[:high_value_report].rewind
             end
