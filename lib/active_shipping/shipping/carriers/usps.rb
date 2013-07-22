@@ -287,7 +287,6 @@ module ActiveMerchant
         success = true
         message = ''
         rate_hash = {}
-        
         xml = REXML::Document.new(response)
         
         if error = xml.elements['/Error']

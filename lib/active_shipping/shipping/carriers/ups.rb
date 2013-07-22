@@ -269,10 +269,35 @@ module ActiveMerchant
                   value = ((imperial ? package.lbs : package.kgs).to_f*1000).round/1000.0 # 3 decimals
                   package_weight << XmlNode.new("Weight", [value,0.1].max)
                 end
+
+                if options[:adult_signature_required]
+                  options[:delivery_confirmation] = '1'
+                elsif options[:signature_required]
+                  options[:delivery_confirmation] = '2'
+                elsif options[:delivery_confirmation]
+                  options[:delivery_confirmation] = '3'
+                else
+                  options[:delivery_confirmation] = false
+                end
+
+                if options[:insurance] or options[:delivery_confirmation]
+                  package_node << XmlNode.new("PackageServiceOptions") do |pso|
+                    if options[:insurance] and !package.value.blank? and package.value > 0.0
+                      pso << XmlNode.new("InsuredValue") do |insured_value|
+                        insured_value << XmlNode.new("CurrencyCode", package.currency || 'USD')
+                        insured_value << XmlNode.new("MonetaryValue", package.value)
+                      end
+                    end
+                    if options[:delivery_confirmation]
+                      pso << XmlNode.new("DeliveryConfirmation") do |dc|
+                        dc << XmlNode.new("DCISType", options[:delivery_confirmation])
+                      end
+                    end
+                  end
+                end  
               
                 # not implemented:  * Shipment/Package/LargePackageIndicator element
                 #                   * Shipment/Package/ReferenceNumber element
-                #                   * Shipment/Package/PackageServiceOptions element
                 #                   * Shipment/Package/AdditionalHandling element  
               end
               
@@ -418,8 +443,7 @@ module ActiveMerchant
             
               shipment << XmlNode.new("Package") do |package_node|
               
-                # not implemented:  * Shipment/Package/PackagingType element
-                #                   * Shipment/Package/Description element
+                # not implemented:  * Shipment/Package/Description element
               
                 package_node << XmlNode.new("PackagingType") do |packaging_type|
                   packaging_type << XmlNode.new("Code", '02')
@@ -467,7 +491,6 @@ module ActiveMerchant
                   end
                 end  
                 # not implemented:  * Shipment/Package/LargePackageIndicator element
-                #                   * Shipment/Package/ReferenceNumber element
                 #                   * Shipment/Package/AdditionalHandling element  
               end
             end # end Packages
