@@ -100,7 +100,7 @@ module ActiveMerchant
         auth_response = ssl_get("http://apitest.dhlglobalmail.com/v1/auth/access_token?username=whiplash.tester&password=wh1pl4sh")
         parsed_auth_response = ActiveSupport::JSON.decode(auth_response)
         if parsed_auth_response['data'] and parsed_auth_response['data']['access_token']
-          options[:access_token] = parsed_auth_response['data']['access_token']
+          options[:access_token] = URI.unescape(parsed_auth_response['data']['access_token'])
         else
           raise ArgumentError.new("Couldn't fetch access token.")
         end
@@ -116,7 +116,8 @@ module ActiveMerchant
 
         def commit(action, request, test = false, options={})
           # TODO: options error checking
-          url = "#{test ? TEST_URL : LIVE_URL}/#{RESOURCES[action]}?#{options[:client_id]}&access_token=#{options[:access_token]}".gsub('CUSTOMER_ID', options[:customer_id])
+          url = "#{test ? TEST_URL : LIVE_URL}/#{RESOURCES[action]}?client_id=#{options[:client_id]}&access_token=#{options[:access_token]}".gsub('CUSTOMER_ID', options[:customer_id])
+          puts "URL: " + url
           ssl_post(url, request)
         end
 
@@ -153,12 +154,8 @@ module ActiveMerchant
                   end
                 end
 
-                #destination
-                destination.address2 = '' if destination.address2.blank?
-                destination.country_code = 'US' if destination.country_code.blank?
-                mpu << XmlNode.new('ConsigneeAddress') do |consignee|
-                  consignee << build_location_node('StandardAddress', destination, options)
-                end
+                # destination
+                mpu << build_location_node('ConsigneeAddress', destination, options)
 
                 for field in %w[address1 city zip country]
                   missing_required << "ShipTo #{field}" if destination.send(field).blank?
@@ -175,13 +172,9 @@ module ActiveMerchant
                 # end
 
                 # origin
-                origin.address2 = '' if origin.address2.blank?
-                origin.country_code = 'US' if origin.country_code.blank?
-                mpu << XmlNode.new('ReturnAddress') do |consignee|
-                  consignee << build_location_node('StandardAddress', origin, options)
-                end
+                mpu << build_location_node('ReturnAddress', origin, options)
 
-                for field in %w[address1 name city zip country]
+                for field in %w[address1 city zip country]
                   missing_required << "ShipFrom #{field}" if origin.send(field).blank?
                 end
 
@@ -189,8 +182,12 @@ module ActiveMerchant
                   missing_required << "ShipFrom name or company_name"
                 end
 
-                mpu << XmlNode.new('OrderedProductCode', SERVICES.invert(options[:service]))
+                if !options[:service] or options[:service].blank?
+                  missing_required << "Service"
+                end
+                mpu << XmlNode.new('OrderedProductCode', SERVICES.invert[options[:service]]) if options[:service]
 
+                imperial = ['US','LR','MM'].include?(origin.country_code(:alpha2))
                 mpu << XmlNode.new("Weight") do |weight|
                   weight << XmlNode.new("Unit", imperial ? 'LBS' : 'KGS')
                 
@@ -207,8 +204,8 @@ module ActiveMerchant
                 end
 
                 # TODO: Is there a good default to use here?
-                mpu << XmlNode.new('MailTypeCode', MAIL_TYPES.invert(options[:mail_type]))
-                mpu << XmlNode.new('FacilityCode', FACILITIES.invert(options[:facility]))
+                mpu << XmlNode.new('MailTypeCode', MAIL_TYPES.invert[options[:mail_type]])
+                mpu << XmlNode.new('FacilityCode', FACILITIES.invert[options[:facility]])
                 mpu << XmlNode.new('ExpectedShipDate', ship_date)
 
               end
@@ -255,6 +252,24 @@ module ActiveMerchant
           end
           LabelResponse.new(success, message, Hash.from_xml(response).values.first, :package_labels => package_labels)
         end
+
+      def build_location_node(name,location,options={})
+        country = location.country_code(:alpha2).blank? ? 'US' : location.country_code(:alpha2)
+
+        location_node = XmlNode.new(name) do |location_node|
+          location_node << XmlNode.new('StandardAddress') do |address|
+            address << XmlNode.new('Name', location.name) unless location.name.blank?
+            address << XmlNode.new('Firm', location.company_name) unless location.company_name.blank?
+            address << XmlNode.new("Address1", location.address1) unless location.address1.blank?
+            address << XmlNode.new("Address2", location.address2) unless location.address2.blank?
+            address << XmlNode.new("City", location.city) unless location.city.blank?
+            address << XmlNode.new("State", location.province) unless location.province.blank?
+            address << XmlNode.new("Zip", location.postal_code) unless location.postal_code.blank?
+            address << XmlNode.new("CountryCode", country)
+          end
+        end
+        return location_node
+      end
 
     end # end Class
   end
