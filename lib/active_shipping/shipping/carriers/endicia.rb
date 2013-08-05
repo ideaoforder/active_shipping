@@ -120,23 +120,22 @@ module ActiveMerchant
 	        # :MailpieceShape => self.package_type
 
 	        # Customs stuff
-	        if options[:customs]
-						root_node << XmlNode.new('IntegratedFormType', options[:customs][:form_type]) unless options[:customs][:form_type].blank?
-						root_node << XmlNode.new('CustomsCertify', (options[:customs][:certify] and options[:customs][:certify] == false) ? 'FALSE' : 'TRUE')
-						root_node << XmlNode.new('CustomsSigner', options[:customs][:signer]) unless options[:customs][:signer].blank?
+	        if options[:customs_info]
+            customs_info = options[:customs_info]
+						root_node << XmlNode.new('IntegratedFormType', customs_info.usps_form_type)
+						root_node << XmlNode.new('CustomsCertify', customs_info.certify.to_s.upcase)
+						root_node << XmlNode.new('CustomsSigner', customs_info.signer) unless customs_info.signer.blank?
 						root_node << XmlNode.new('CustomsInfo') do |customs|
-
-							customs << XmlNode.new('ContentsType', options[:customs][:contents_type]) unless options[:customs][:contents_type].blank?
-
-							if options[:customs][:items] and options[:customs][:items].length > 0
+							customs << XmlNode.new('ContentsType', customs_info.contents_type)
+							if customs_info.customs_items.length > 0
 								customs << XmlNode.new('CustomsItems') do |customs_items|
-									for item in options[:customs][:items]
+									for item in customs_info.customs_items
 										customs_items << XmlNode.new('CustomsItem') do |customs_item|
-											customs_item << XmlNode.new('Quantity', item[:quantity])
-											customs_item << XmlNode.new('Value', item[:value])
-											customs_item << XmlNode.new('Weight', item[:weight])
-											customs_item << XmlNode.new('Description', item[:description])
-											customs_item << XmlNode.new('CountryOfOrigin', item[:country])
+											customs_item << XmlNode.new('Quantity', item.quantity)
+											customs_item << XmlNode.new('Value', item.value)
+											customs_item << XmlNode.new('Weight', item.weight)
+											customs_item << XmlNode.new('Description', item.description)
+											customs_item << XmlNode.new('CountryOfOrigin', origin.country)
 										end
 									end
 								end
