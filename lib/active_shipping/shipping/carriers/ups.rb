@@ -73,28 +73,39 @@ module ActiveMerchant
         "83" => "UPS Today Dedicated Courier",
         "84" => "UPS Today Intercity",
         "85" => "UPS Today Express",
-        "86" => "UPS Today Express Saver"
+        "86" => "UPS Today Express Saver",
+        "72" => "UPS Expedited Mail Innovations",
+        "73" => "UPS Priority Mail Innovations",
+        "74" => "UPS Economy Mail Innovations"
       }
       
       CANADA_ORIGIN_SERVICES = {
         "01" => "UPS Express",
         "02" => "UPS Expedited",
-        "14" => "UPS Express Early A.M."
+        "14" => "UPS Express Early A.M.",
+        "73" => "UPS Priority Mail Innovations",
+        "74" => "UPS Economy Mail Innovations"
       }
       
       MEXICO_ORIGIN_SERVICES = {
         "07" => "UPS Express",
         "08" => "UPS Expedited",
-        "54" => "UPS Express Plus"
+        "54" => "UPS Express Plus",
+        "73" => "UPS Priority Mail Innovations",
+        "74" => "UPS Economy Mail Innovations"
       }
       
       EU_ORIGIN_SERVICES = {
         "07" => "UPS Express",
-        "08" => "UPS Expedited"
+        "08" => "UPS Expedited",
+        "73" => "UPS Priority Mail Innovations",
+        "74" => "UPS Economy Mail Innovations"
       }
       
       OTHER_NON_US_ORIGIN_SERVICES = {
-        "07" => "UPS Express"
+        "07" => "UPS Express",
+        "73" => "UPS Priority Mail Innovations",
+        "74" => "UPS Economy Mail Innovations"
       }
 
       TRACKING_STATUS_CODES = HashWithIndifferentAccess.new({
@@ -120,7 +131,9 @@ module ActiveMerchant
         packages = Array(packages)
         access_request = build_access_request
         rate_request = build_rate_request(origin, destination, packages, options)
+      puts "RATES REQUEST: " + rate_request
         response = commit(:rates, save_request(access_request + rate_request), (options[:test] || false))
+      puts "RATES RESPONSE: " + response
         parse_rate_response(origin, destination, packages, response, options)
       end
       
@@ -384,6 +397,56 @@ module ActiveMerchant
               missing_required << "Shipper #{field}" if shipper.send(field).blank?
             end
             shipment << build_location_node('Shipper', shipper, options)
+
+            # MAIL INNOVATIONS
+            domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
+
+            shipment << XmlNode.new('USPSEndorsement', domestic ? '1' : '5')
+            if !domestic
+              errors << "Only one package may be shipped with Mail Innovations" if packages.length > 1
+              package = packages.first
+              shipment << XmlNode.new('MILabelCN22Indicator', '1')
+              shipment << XmlNode.new('ShipmentServiceOptions') do |sso|
+                sso << XmlNode.new('InternationalForms') do |intl_forms|
+                  intl_forms << XmlNode.new('FormType', '09') # CN22
+                  intl_forms << XmlNode.new('CN22Form') do |cn22|
+                    # 6 = 4X6 or 1 = 8.5X11
+                    cn22 << XmlNode.new('LabelSize', options[:label_size] || '06')
+                    cn22 << XmlNode.new('PrintsPerPage', '1') # only option at the moment
+                    # pdf,png,gif,zpl,star,epl2 and spl
+                    cn22 << XmlNode.new('LabelPrintType', options[:image_type])
+                    # 1 = GIFT 2 = DOCUMENTS 3 = COMMERCIAL SAMPLE, 4 = OTHER
+                    # NOTE: GIFT and OTHER are currently the only supported options
+                    cn22 << XmlNode.new('CN22Type', options[:gift] ? '1' : '4')
+                    cn22 << XmlNode.new('CN22OtherDescription', "MERCHANDISE") unless options[:gift]
+                    cn22 << XmlNode.new('FoldHereText', options[:fold_here_text]) if options[:fold_here_text]
+                    cn22 << XmlNode.new('CN22Content') do |cn22_content|
+                      # TODO!!!
+                      cn22_content << XmlNode.new('CN22ContentQuantity', '666')
+                      cn22_content << XmlNode.new('CN22ContentDescription', 'stuff')
+                      cn22_content << XmlNode.new("CN22ContentWeight") do |cn22_weight|
+                        cn22_weight << XmlNode.new("UnitOfMeasurement") do |units|
+                          units << XmlNode.new("Code", imperial ? 'lbs' : 'ozs')
+                          # /Description
+                        end
+                        value = ((imperial ? package.lbs : package.kgs).to_f*1000).round/1000.0 # 3 decimals
+                        cn22_weight << XmlNode.new("Weight", [value,0.1].max)
+                      end
+                      cn22_content << XmlNode.new('CN22ContentTotalValue', package.value)
+                      cn22_content << XmlNode.new('CN22ContentCurrencyCode', 'USD') # only supports USD
+                      cn22_content << XmlNode.new('CN22ContentCountryOfOrigin', origin.country) # ??? is this alpha2?
+                      # /CN22ContentTariffNumber
+                    end # end CN22Content
+                  end # end CN22
+                end
+              end
+            end # End INTL shipment
+            shipment << XmlNode.new('SubClassification', options[:irregular] ? 'IR' : 'MA')
+            shipment << XmlNode.new('CostCenter', options[:cost_center] || "costcenter123")
+            shipment << XmlNode.new('PackageID', options[:reference_number])
+            # /ShipmentConfirmRequest/Shipment/IrregularIndicator
+
+            # END MAIL INNOVATIONS
 
             shipment << XmlNode.new('PaymentInformation') do |payment|
               pay_type = PAYMENT_TYPES[options[:pay_type]] || 'Prepaid'
