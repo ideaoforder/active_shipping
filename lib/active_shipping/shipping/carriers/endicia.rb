@@ -20,6 +20,23 @@ module ActiveMerchant
         :label => 'LabelService/EwsLabelService.asmx/GetPostageLabelXML'
         # :void  => 'ups.app/xml/Void'
       }
+
+      SERVICES = {
+        "USPS Express Mail" => "Express",
+        "USPS First Class Mail" => "First",
+        "USPS Library Mail" => "LibraryMail",
+        "USPS Media Mail" => "MediaMail",
+        "USPS Standard Post" => "StandardPost",
+        "USPS Parcel Post" => "StandardPost",
+        "USPS Parcel Select" => "ParcelSelect",
+        "USPS Priority Mail" => "Priority",
+        "USPS Critical Mail" => "CriticalMail",
+        "USPS Express Mail International" => "ExpressMailInternational",
+        "USPS First Class Mail International" => "FirstClassMailInternational",
+        "USPS First Class Package International Service" => "FirstClassPackageInternationalService",
+        "USPS Priority Mail International " => "PriorityMailInternational",
+        "USPS Global Express Guaranteed" => "GXG"
+      }
       
       def requirements
         [:account_id, :requester_id, :password]
@@ -31,10 +48,10 @@ module ActiveMerchant
         package = packages.first # For the moment, let's get one package working
         
         label_request = build_label_request(origin, destination, package, options)
-        puts label_request.inspect
+        # puts label_request.inspect
         response = commit(:label, save_request(label_request), (options[:test] || false))
-        puts response.inspect
-        # parse_label_response(origin, destination, packages, response, options)
+        # puts response.inspect
+        parse_label_response(origin, destination, packages, response, options)
       end
 
       # def void_label(shipping_id, tracking_numbers=[], options={})
@@ -49,7 +66,6 @@ module ActiveMerchant
       protected
       
       # See Ship-WW-XML.pdf for API info
-       # @image_type = [GIF|EPL] 
       def build_label_request(origin, destination, package, options={})
         # @required = :origin_account, 
         # @destination +=  [:phone, :email, :company, :address, :city, :state, :zip]
@@ -58,28 +74,19 @@ module ActiveMerchant
         errors = Array.new
 
         # pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
-        # if options[:adult_signature_required]
-        #   options[:delivery_confirmation] = '1'
-        # elsif options[:signature_required]
-        #   options[:delivery_confirmation] = '2'
-        # elsif options[:delivery_confirmation]
-        #   options[:delivery_confirmation] = '3'
-        # else
-        #   options[:delivery_confirmation] = false
-        # end
 
         xml_request = XmlNode.new('LabelRequest') do |root_node|
         	# Account stuff
           root_node << XmlNode.new('AccountID', options[:account_id])
           root_node << XmlNode.new('RequesterID', options[:requester_id])
           root_node << XmlNode.new('PassPhrase', options[:password])
-          root_node << XmlNode.new('Test', options[:test] || false)
+          root_node << XmlNode.new('Test', options[:test] ? 'YES' : 'NO')
+          root_node << XmlNode.new('ImageFormat', options[:image_type] || 'GIF')
 
           # Order level stuff
           root_node << XmlNode.new('PartnerTransactionID', options[:transaction_id])
           root_node << XmlNode.new('PartnerCustomerID', options[:customer_id])
-          root_node << XmlNode.new('MailClass', options[:service_type]) # TODO: May need something to help format/determine this
-
+          root_node << XmlNode.new('MailClass', SERVICES[options[:service_type]] || 'First')
           # From
           for field in %w[state city zip address1]
             missing_required << "ShipFrom #{field}" if origin.send(field).blank?
@@ -112,9 +119,8 @@ module ActiveMerchant
           root_node << XmlNode.new('ToAddress3', destination.address3) unless destination.address3.blank?
           root_node << XmlNode.new('ToCountryCode', destination.country_code(:alpha2)) unless destination.country_code(:alpha2) == 'US'
 
-
 	        # Package stuff
-	        root_node << XmlNode.new('WeightOz', package.weight) # TODO: Need to format this
+	        root_node << XmlNode.new('WeightOz', package.oz.to_i.to_s)
 	        root_node << XmlNode.new('Value', package.value)
 	        root_node << XmlNode.new('PackageType', options[:package_type])
 	        # :MailpieceShape => self.package_type
@@ -142,6 +148,20 @@ module ActiveMerchant
 							end
 						end
 	        end
+
+          # Services: Signature, Insurance, Delivery Confirmation
+          if options[:insurance] or options[:delivery_confirmation] or options[:signature_required] or options[:adult_signature_required]
+            root_node << XmlNode.new("Services") do |services|
+              services << XmlNode.new("DeliveryConfirmation", "ON") if options[:delivery_confirmation]
+              services << XmlNode.new("SignatureConfirmation", "ON") if options[:signature_required]
+              services << XmlNode.new("AdultSignature", "ON") if options[:adult_signature_required]
+
+              if options[:insurance] and !package.value.blank? and package.value > 0.0
+                services << XmlNode.new("InsuredMail", "Endicia") # ??? Or do we want UspsOnline ???
+                root_node << XmlNode.new("InsuredValue", package.value)
+              end
+            end
+          end 
 
 	      end
         # There are a lot of required fields for the label request to work
@@ -184,31 +204,21 @@ module ActiveMerchant
       def parse_label_response(origin, destination, packages, response, options={})
         xml = REXML::Document.new(response)
         success = response_success?(xml)
-        message = response_message(xml)
-        
+        extension = options[:image_type] || 'GIF'
+
         if success
-          package_labels = []
-          xml.elements.each('//ShipmentAcceptResponse/ShipmentResults/PackageResults') do |package_element|
-            package_labels << {}
-            package_labels.last[:tracking_number] = package_element.get_text("TrackingNumber").to_s
-            package_labels.last[:encoded_label] = package_element.get_text("LabelImage/GraphicImage")
-            extension = package_element.get_text("LabelImage/LabelImageFormat/Code").to_s
-            package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase], :encoding => 'ascii-8bit')
-            package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label].value )
-            package_labels.last[:label_file].rewind
-            
-            # if this package has a high insured value
-            high_value_report = package_element.get_text("//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/GraphicImage")
-            if high_value_report
-              extension = package_element.get_text("//ShipmentAcceptResponse/ShipmentResults/ControlLogReceipt/ImageFormat/Code")
-              package_labels.last[:encoded_high_value_report] = high_value_report
-              package_labels.last[:high_value_report] = Tempfile.new(["high_value_report", '.' + extension.downcase], :encoding => 'ascii-8bit')
-              package_labels.last[:high_value_report].write Base64.decode64( package_labels.last[:encoded_high_value_report].value )
-              package_labels.last[:high_value_report].rewind
-            end
-          end
+          message = ''
+          package_label = {}
+          package_label[:encoded_label] = xml.get_text('/*/Base64LabelImage').to_s
+          package_label[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase], :encoding => 'ascii-8bit')
+          package_label[:label_file].write Base64.decode64( package_label[:encoded_label] )
+          package_label[:label_file].rewind
+          package_label[:tracking_number] = xml.get_text("/*/TrackingNumber").to_s
+          package_label[:final_postage] = xml.get_text("/*/FinalPostage").to_s
+        else
+          message = error_message(xml)
         end
-        LabelResponse.new(success, message, Hash.from_xml(response).values.first, :package_labels => package_labels)
+        LabelResponse.new(success, message, Hash.from_xml(response).values.first, :package_labels => [package_label])
       end
 
     # def parse_void_response(response, tracking_numbers=[])
@@ -247,11 +257,11 @@ module ActiveMerchant
       end
 
       def response_success?(xml)
-        xml.get_text('/*/Response/ResponseStatusCode').to_s == '1'
+        xml.get_text('/*/Status').to_s == '0'
       end
       
-      def response_message(xml)
-        xml.get_text('/*/Response/Error/ErrorDescription | /*/Response/ResponseStatusDescription').to_s
+      def error_message(xml)
+        xml.get_text('/*/ErrorMessage').to_s.split('.').first
       end
       
       def commit(action, request, test = false)

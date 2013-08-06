@@ -33,6 +33,10 @@ module ActiveMerchant #:nodoc:
         @currency = options[:currency] || (options[:value].currency if options[:value].respond_to?(:currency))
         @cylinder = (options[:cylinder] || options[:tube]) ? true : false
         @gift = options[:gift] ? true : false
+        @large = options[:large] ? true : false
+        @irregular = options[:irregular] ? true : false
+
+        @shape = options[:shape]
       end
   
       def cylinder?
@@ -41,6 +45,8 @@ module ActiveMerchant #:nodoc:
       alias_method :tube?, :cylinder?
       
       def gift?; @gift end
+      def irregular?; @irregular end
+      def large?; @large end
       
       def ounces(options={})
         weight(options).in_ounces.amount
@@ -75,6 +81,7 @@ module ActiveMerchant #:nodoc:
         measurement.nil? ? @centimetres : measure(measurement, @centimetres)
       end
       alias_method :cm, :centimetres
+      alias_method :centimeters, :centimetres
       
       def weight(options = {})
         case options[:type]

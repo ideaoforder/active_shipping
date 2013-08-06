@@ -28,7 +28,7 @@ module ActiveMerchant #:nodoc:
         @customs_items = Array(options[:customs_items])
       end
 
-      def ups_form_type
+      def usps_form_type
         USPS_FORM_TYPES[@form_type]
       end
 
