@@ -33,7 +33,8 @@ module ActiveMerchant
       API_CODES = {
         :us_rates => 'RateV4',
         :world_rates => 'IntlRateV2',
-        :test => 'CarrierPickupAvailability'
+        :test => 'CarrierPickupAvailability',
+        :verify_address => 'Verify'
       }
       USE_SSL = {
         :us_rates => false,
@@ -180,6 +181,27 @@ module ActiveMerchant
       def maximum_weight
         Mass.new(70, :pounds)
       end
+
+      def verify_address(destination)
+        destination = Location.from(destination)
+        # We only verify US addresses, proper
+        if destination.country_code(:alpha2) == 'US'
+          request = build_verify_address_request(destination)
+          response = commit(:verify_address, request, false)
+          parse_verify_address_response destination, response
+        else
+          country = COUNTRY_NAME_CONVERSIONS[destination.country.code(:alpha2).value] || destination.country.name
+          VerifyAddressResponse.new(true, '', {
+            :zip5 => destination.zip,
+            :state => destination.state,
+            :city => destination.city,
+            :address1 => destination.address1,
+            :address2 => destination.address2,
+            :company_name => destination.company_name,
+            :country => country
+          })
+        end
+      end
       
       protected
       
@@ -282,7 +304,47 @@ module ActiveMerchant
         end
         URI.encode(save_request(request.to_s))
       end
-      
+
+      def build_verify_address_request(location)
+        request = XmlNode.new('AddressValidateRequest', :USERID => @options[:login]) do |av_request|
+          av_request << XmlNode.new('Address') do |address|
+            address << XmlNode.new('FirmName', location.company_name || '')
+            # NOTE: For some reason, USPS puts the apt as address1
+            address << XmlNode.new('Address1', location.address2 || '')
+            address << XmlNode.new('Address2', location.address1)
+            address << XmlNode.new('City', location.city)
+            address << XmlNode.new('State', location.state)
+            address << XmlNode.new('Zip5', location.zip5)
+            address << XmlNode.new('Zip4', location.zip4)
+          end
+        end
+      puts request
+        URI.encode(save_request(request.to_s))
+      end
+
+      def parse_verify_address_response(location, response)
+        success = true
+        message = ''
+        address = {}
+  
+        xml = REXML::Document.new(response)
+        if error = xml.elements['/AddressValidateResponse/Address/Error']
+          success = false
+          message = error.get_text['Description'].to_s
+        else
+          returned_address = Hash.from_xml(xml.elements['/AddressValidateResponse/Address'].to_s)
+          returned_address['Address']['address1'] = returned_address['Address']['Address2']
+          returned_address['Address']['address2'] = returned_address['Address']['Address1']
+          returned_address['Address'].delete 'Address1'
+          returned_address['Address'].delete 'Address1'
+          returned_address['Address'].each{|k, v| address[k.gsub(/(.)([A-Z])/,'\1_\2').downcase.to_sym] = v}
+          address[:country] = "United States"
+          message = returned_address['Address']['ReturnText']
+        end
+        
+        VerifyAddressResponse.new(success, message, address)
+      end
+
       def parse_rate_response(origin, destination, packages, response, options={})
         success = true
         message = ''
@@ -453,6 +515,7 @@ module ActiveMerchant
         scheme = USE_SSL[action] ? 'https://' : 'http://'
         host = test ? TEST_DOMAINS[USE_SSL[action]] : LIVE_DOMAIN
         resource = test ? TEST_RESOURCE : LIVE_RESOURCE
+        puts "#{scheme}#{host}/#{resource}?API=#{API_CODES[action]}&XML=#{request}"
         "#{scheme}#{host}/#{resource}?API=#{API_CODES[action]}&XML=#{request}"
       end
       

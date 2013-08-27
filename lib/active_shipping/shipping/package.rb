@@ -4,7 +4,16 @@ module ActiveMerchant #:nodoc:
       include Quantified
       
       cattr_accessor :default_options
-      attr_reader :options, :value, :currency
+      attr_reader :options, 
+                  :value, 
+                  :currency,
+                  :cylinder,
+                  :gift,
+                  :large,
+                  :irregular,
+                  :shape,
+                  :packaging_type
+      alias_method :package_type, :packaging_type
 
       # Package.new(100, [10, 20, 30], :units => :metric)
       # Package.new(Mass.new(100, :grams), [10, 20, 30].map {|m| Length.new(m, :centimetres)})
@@ -37,6 +46,7 @@ module ActiveMerchant #:nodoc:
         @irregular = options[:irregular] ? true : false
 
         @shape = options[:shape]
+        @packaging_type = options[:package_type] || options[:packaging_type]
       end
   
       def cylinder?

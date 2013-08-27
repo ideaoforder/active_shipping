@@ -164,6 +164,22 @@ module ActiveMerchant #:nodoc:
         end
       end
 
+      # Returns the first 5 digits of the postal code, e.g. "77095"
+      def zip5
+        @postal_code.to_s.scan(/\d{5}/).first || zip
+      end
+
+      # Returns the last 4 digits of the postal code
+      def zip4
+        if /(\d{5})(\d{4})/ =~ @postal_code
+          return "#{$2}"
+        elsif /\d{5}-\d{4}/ =~ @postal_code
+          return "#{$2}"
+        else
+          return nil
+        end
+      end
+
       # TODO: We should have a province from zip method too
       def self.state_from_zip(zip)
         zip = zip.to_i

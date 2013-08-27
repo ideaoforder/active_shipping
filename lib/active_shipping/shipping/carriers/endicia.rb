@@ -1,4 +1,3 @@
-# body = "labelRequestXML=<LabelRequest><AccountID>792190</AccountID><RequesterID>vgtest</RequesterID><PassPhrase>whiplash1</PassPhrase><Test>YES</Test><FromAddress1>4657 Platt Road</FromAddress1><FromCity>Ann Arbor</FromCity><FromState>MI</FromState><FromPostalCode>48108</FromPostalCode><FromCompany>Indie Game The Movie</FromCompany><FromPhone>7344800667</FromPhone><ToPostalCode>97204</ToPostalCode><ToName>Ron Chan</ToName><ToEMail>rondanchan@gmail.com</ToEMail><ToPhone></ToPhone><ToAddress1>333 SW 5th Ave</ToAddress1><ToAddress2>Ste 500</ToAddress2><ToCity>Portland</ToCity><ToState>Oregon</ToState><ToCountry>United States</ToCountry><PartnerTransactionID>37469</PartnerTransactionID><PartnerCustomerID>232</PartnerCustomerID><MailClass>FIRST</MailClass><WeightOz>7</WeightOz><Value>69.99</Value><PackageType>RECTPARCEL</PackageType><ReturnAddress1>Indie Game The Movie</ReturnAddress1><ReturnAddress2>Distribution</ReturnAddress2><ReturnAddress3>4657 Platt Road</ReturnAddress3><ReturnAddress4>Ann Arbor, MI 48108</ReturnAddress4><ReturnAddressPhone>7344800667</ReturnAddressPhone><IntegratedFormType>Form2976</IntegratedFormType><CustomsCertify>TRUE</CustomsCertify><CustomsSigner>James Marks</CustomsSigner><CustomsInfo><ContentsType>MERCHANDISE</ContentsType><CustomsItems><CustomsItem><Quantity>1</Quantity><Description>Special Edition BLURAY, Indie Game: The Movie, Special Ed.  BLURAY</Description><Value>69.99</Value><CountryOfOrigin>US</CountryOfOrigin><Weight>1</Weight></CustomsItem></CustomsItems></CustomsInfo></LabelRequest>"
 # -*- encoding: utf-8 -*-
 
 module ActiveMerchant
@@ -21,7 +20,15 @@ module ActiveMerchant
         # :void  => 'ups.app/xml/Void'
       }
 
-      SERVICES = {
+      INTL_SERVICES = {
+        "USPS Express Mail International" => "ExpressMailInternational",
+        "USPS First Class Mail International" => "FirstClassMailInternational",
+        "USPS First Class Package International Service" => "FirstClassPackageInternationalService",
+        "USPS Priority Mail International " => "PriorityMailInternational",
+        "USPS Global Express Guaranteed" => "GXG"
+      }
+
+      US_SERVICES = {
         "USPS Express Mail" => "Express",
         "USPS First Class Mail" => "First",
         "USPS Library Mail" => "LibraryMail",
@@ -30,14 +37,48 @@ module ActiveMerchant
         "USPS Parcel Post" => "StandardPost",
         "USPS Parcel Select" => "ParcelSelect",
         "USPS Priority Mail" => "Priority",
-        "USPS Critical Mail" => "CriticalMail",
-        "USPS Express Mail International" => "ExpressMailInternational",
-        "USPS First Class Mail International" => "FirstClassMailInternational",
-        "USPS First Class Package International Service" => "FirstClassPackageInternationalService",
-        "USPS Priority Mail International " => "PriorityMailInternational",
-        "USPS Global Express Guaranteed" => "GXG"
+        "USPS Critical Mail" => "CriticalMail"
       }
-      
+
+      SERVICES = US_SERVICES.merge(INTL_SERVICES) 
+
+      # TODO: get rates for "U.S. possessions and Trust Territories" like Guam, etc. via domestic rates API: http://www.usps.com/ncsc/lookups/abbr_state.txt
+      # TODO: figure out how USPS likes to say "Ivory Coast"
+      #
+      # Country names:
+      # http://pe.usps.gov/text/Imm/immctry.htm
+      COUNTRY_NAME_CONVERSIONS = {
+        "BA" => "Bosnia-Herzegovina",
+        "CD" => "Congo, Democratic Republic of the",
+        "CG" => "Congo (Brazzaville),Republic of the",
+        "CI" => "Côte d'Ivoire (Ivory Coast)",
+        "CK" => "Cook Islands (New Zealand)",
+        "FK" => "Falkland Islands",
+        "GB" => "Great Britain and Northern Ireland",
+        "GE" => "Georgia, Republic of",
+        "IR" => "Iran",
+        "KN" => "Saint Kitts (St. Christopher and Nevis)",
+        "KP" => "North Korea (Korea, Democratic People's Republic of)",
+        "KR" => "South Korea (Korea, Republic of)",
+        "LA" => "Laos",
+        "LY" => "Libya",
+        "MC" => "Monaco (France)",
+        "MD" => "Moldova",
+        "MK" => "Macedonia, Republic of",
+        "MM" => "Burma",
+        "PN" => "Pitcairn Island",
+        "RU" => "Russia",
+        "SK" => "Slovak Republic",
+        "TK" => "Tokelau (Union) Group (Western Samoa)",
+        "TW" => "Taiwan",
+        "TZ" => "Tanzania",
+        "VA" => "Vatican City",
+        "VG" => "British Virgin Islands",
+        "VN" => "Vietnam",
+        "WF" => "Wallis and Futuna Islands",
+        "WS" => "Western Samoa"
+      }
+
       def requirements
         [:account_id, :requester_id, :password]
       end
@@ -48,9 +89,9 @@ module ActiveMerchant
         package = packages.first # For the moment, let's get one package working
         
         label_request = build_label_request(origin, destination, package, options)
-        # puts label_request.inspect
+        puts label_request.inspect
         response = commit(:label, save_request(label_request), (options[:test] || false))
-        # puts response.inspect
+        puts response.inspect
         parse_label_response(origin, destination, packages, response, options)
       end
 
@@ -66,6 +107,7 @@ module ActiveMerchant
       protected
       
       # See Ship-WW-XML.pdf for API info
+      # body = "labelRequestXML=<LabelRequest><AccountID>792190</AccountID><RequesterID>vgtest</RequesterID><PassPhrase>whiplash1</PassPhrase><Test>YES</Test><FromAddress1>4657 Platt Road</FromAddress1><FromCity>Ann Arbor</FromCity><FromState>MI</FromState><FromPostalCode>48108</FromPostalCode><FromCompany>Indie Game The Movie</FromCompany><FromPhone>7344800667</FromPhone><ToPostalCode>97204</ToPostalCode><ToName>Ron Chan</ToName><ToEMail>rondanchan@gmail.com</ToEMail><ToPhone></ToPhone><ToAddress1>333 SW 5th Ave</ToAddress1><ToAddress2>Ste 500</ToAddress2><ToCity>Portland</ToCity><ToState>Oregon</ToState><ToCountry>United States</ToCountry><PartnerTransactionID>37469</PartnerTransactionID><PartnerCustomerID>232</PartnerCustomerID><MailClass>FIRST</MailClass><WeightOz>7</WeightOz><Value>69.99</Value><PackageType>RECTPARCEL</PackageType><ReturnAddress1>Indie Game The Movie</ReturnAddress1><ReturnAddress2>Distribution</ReturnAddress2><ReturnAddress3>4657 Platt Road</ReturnAddress3><ReturnAddress4>Ann Arbor, MI 48108</ReturnAddress4><ReturnAddressPhone>7344800667</ReturnAddressPhone><IntegratedFormType>Form2976</IntegratedFormType><CustomsCertify>TRUE</CustomsCertify><CustomsSigner>James Marks</CustomsSigner><CustomsInfo><ContentsType>MERCHANDISE</ContentsType><CustomsItems><CustomsItem><Quantity>1</Quantity><Description>Special Edition BLURAY, Indie Game: The Movie, Special Ed.  BLURAY</Description><Value>69.99</Value><CountryOfOrigin>US</CountryOfOrigin><Weight>1</Weight></CustomsItem></CustomsItems></CustomsInfo></LabelRequest>"
       def build_label_request(origin, destination, package, options={})
         # @required = :origin_account, 
         # @destination +=  [:phone, :email, :company, :address, :city, :state, :zip]
@@ -73,24 +115,30 @@ module ActiveMerchant
         missing_required = Array.new
         errors = Array.new
 
+        # domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
+        domestic = US_SERVICES[options[:service_type]]
+
         # pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
 
-        xml_request = XmlNode.new('LabelRequest') do |root_node|
+        xml_request = XmlNode.new('LabelRequest', :LabelType => (domestic ? "Domestic" : "International"), :LabelSubtype => "Integrated", :Test => (options[:test] ? 'YES' : 'NO'), :ImageFormat =>  (options[:image_type] || 'GIF')) do |root_node|
         	# Account stuff
           root_node << XmlNode.new('AccountID', options[:account_id])
           root_node << XmlNode.new('RequesterID', options[:requester_id])
           root_node << XmlNode.new('PassPhrase', options[:password])
-          root_node << XmlNode.new('Test', options[:test] ? 'YES' : 'NO')
-          root_node << XmlNode.new('ImageFormat', options[:image_type] || 'GIF')
 
           # Order level stuff
           root_node << XmlNode.new('PartnerTransactionID', options[:transaction_id])
           root_node << XmlNode.new('PartnerCustomerID', options[:customer_id])
           root_node << XmlNode.new('MailClass', SERVICES[options[:service_type]] || 'First')
+
           # From
-          for field in %w[state city zip address1]
+          for field in %w[city zip address1]
             missing_required << "ShipFrom #{field}" if origin.send(field).blank?
           end
+          if domestic and origin.state.blank?
+            missing_required << "ShipFrom state"
+          end
+          origin_country = COUNTRY_NAME_CONVERSIONS[origin.country.code(:alpha2).value] || origin.country.name
           root_node << XmlNode.new('FromName', origin.name)
           root_node << XmlNode.new('FromCity', origin.city)
           root_node << XmlNode.new('FromState', origin.state)
@@ -101,12 +149,16 @@ module ActiveMerchant
           root_node << XmlNode.new('ReturnAddress1', origin.address1)
           root_node << XmlNode.new('ReturnAddress2', origin.address2) unless origin.address2.blank? 
           root_node << XmlNode.new('ReturnAddress3', origin.address3) unless origin.address3.blank?
-          root_node << XmlNode.new('FromCountry', origin.country) unless destination.country_code(:alpha2) == 'US'
+          root_node << XmlNode.new('FromCountry', origin_country) unless destination.country_code(:alpha2) == 'US'
 
           # To
-          for field in %w[state city zip address1]
-            missing_required << "ShipFrom #{field}" if destination.send(field).blank?
+          for field in %w[city zip address1]
+            missing_required << "ShipTo #{field}" if destination.send(field).blank?
           end
+          if domestic and destination.state.blank?
+            missing_required << "ShipTo state"
+          end
+          destination_country = COUNTRY_NAME_CONVERSIONS[destination.country.code(:alpha2).value] || destination.country.name
           root_node << XmlNode.new('ToName', destination.name)
           root_node << XmlNode.new('ToCity', destination.city)
           root_node << XmlNode.new('ToState', destination.state)
@@ -118,12 +170,12 @@ module ActiveMerchant
           root_node << XmlNode.new('ToAddress2', destination.address2) unless destination.address2.blank? 
           root_node << XmlNode.new('ToAddress3', destination.address3) unless destination.address3.blank?
           root_node << XmlNode.new('ToCountryCode', destination.country_code(:alpha2)) unless destination.country_code(:alpha2) == 'US'
+          root_node << XmlNode.new('ToCountry', destination_country) unless destination.country_code(:alpha2) == 'US'
 
 	        # Package stuff
 	        root_node << XmlNode.new('WeightOz', package.oz.to_i.to_s)
 	        root_node << XmlNode.new('Value', package.value)
-	        root_node << XmlNode.new('PackageType', options[:package_type])
-	        # :MailpieceShape => self.package_type
+	        root_node << XmlNode.new('MailpieceShape', package.shape || 'PARCEL')
 
 	        # Customs stuff
 	        if options[:customs_info]
@@ -133,15 +185,15 @@ module ActiveMerchant
 						root_node << XmlNode.new('CustomsSigner', customs_info.signer) unless customs_info.signer.blank?
 						root_node << XmlNode.new('CustomsInfo') do |customs|
 							customs << XmlNode.new('ContentsType', customs_info.contents_type)
-							if customs_info.customs_items.length > 0
+							if customs_info.customs_items and customs_info.customs_items.length > 0
 								customs << XmlNode.new('CustomsItems') do |customs_items|
 									for item in customs_info.customs_items
 										customs_items << XmlNode.new('CustomsItem') do |customs_item|
 											customs_item << XmlNode.new('Quantity', item.quantity)
 											customs_item << XmlNode.new('Value', item.value)
 											customs_item << XmlNode.new('Weight', item.weight)
-											customs_item << XmlNode.new('Description', item.description)
-											customs_item << XmlNode.new('CountryOfOrigin', origin.country)
+											customs_item << XmlNode.new('Description', item.description[0..49])
+											customs_item << XmlNode.new('CountryOfOrigin', origin.country_code(:alpha2))
 										end
 									end
 								end
@@ -151,15 +203,10 @@ module ActiveMerchant
 
           # Services: Signature, Insurance, Delivery Confirmation
           if options[:insurance] or options[:delivery_confirmation] or options[:signature_required] or options[:adult_signature_required]
-            root_node << XmlNode.new("Services") do |services|
-              services << XmlNode.new("DeliveryConfirmation", "ON") if options[:delivery_confirmation]
-              services << XmlNode.new("SignatureConfirmation", "ON") if options[:signature_required]
-              services << XmlNode.new("AdultSignature", "ON") if options[:adult_signature_required]
+            root_node << XmlNode.new("Services", :DeliveryConfirmation => (options[:delivery_confirmation] ? "ON" : "OFF"), :SignatureConfirmation => (options[:signature_required] ? "ON" : "OFF"), :AdultSignature => (options[:adult_signature_required] ? "ON" : "OFF"), :InsuredMail => (options[:insurance] ? "Endicia" : "OFF"))
 
-              if options[:insurance] and !package.value.blank? and package.value > 0.0
-                services << XmlNode.new("InsuredMail", "Endicia") # ??? Or do we want UspsOnline ???
-                root_node << XmlNode.new("InsuredValue", package.value)
-              end
+            if options[:insurance] and !package.value.blank? and package.value > 0.0
+              root_node << XmlNode.new("InsuredValue", package.value)
             end
           end 
 
@@ -209,7 +256,16 @@ module ActiveMerchant
         if success
           message = ''
           package_label = {}
-          package_label[:encoded_label] = xml.get_text('/*/Base64LabelImage').to_s
+
+          if xml.get_text('/*/Base64LabelImage').nil?
+            package_label[:encoded_label] = ''
+            xml.elements.each('/*/Label/Image') do |image|
+              package_label[:encoded_label] += image.get_text.to_s
+            end
+          else
+            package_label[:encoded_label] = xml.get_text('/*/Base64LabelImage').to_s
+          end
+
           package_label[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase], :encoding => 'ascii-8bit')
           package_label[:label_file].write Base64.decode64( package_label[:encoded_label] )
           package_label[:label_file].rewind

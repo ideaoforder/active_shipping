@@ -12,6 +12,7 @@ module ActiveMerchant #:nodoc:
                   :contents_type,
                   :label_size,
                   :gift,
+                  :description,
                   :customs_items
       
       alias_method 'gift?', :gift
@@ -26,6 +27,7 @@ module ActiveMerchant #:nodoc:
         @contents_type = @gift ? 'GIFT' : 'MERCHANDISE'
         @label_size = options[:label_size]
         @customs_items = Array(options[:customs_items])
+        @description = options[:description] || "Merchandise"
       end
 
       def usps_form_type
