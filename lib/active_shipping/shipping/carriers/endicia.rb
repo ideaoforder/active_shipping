@@ -120,8 +120,10 @@ module ActiveMerchant
 
         # pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
 
-        xml_request = XmlNode.new('LabelRequest', :LabelType => (domestic ? "Domestic" : "International"), :LabelSubtype => "Integrated", :Test => (options[:test] ? 'YES' : 'NO'), :ImageFormat =>  (options[:image_type] || 'GIF')) do |root_node|
+        # FIXME: this format doesn't seem to work for domestic
+        xml_request = XmlNode.new('LabelRequest', :LabelType => (domestic ? "Default" : "International"),  :Test => (options[:test] ? 'YES' : 'NO'), :ImageFormat =>  (options[:image_type] || 'GIF')) do |root_node|
         	# Account stuff
+          root_node << XmlNode.new('LabelSubtype', "Integrated") unless domestic
           root_node << XmlNode.new('AccountID', options[:account_id])
           root_node << XmlNode.new('RequesterID', options[:requester_id])
           root_node << XmlNode.new('PassPhrase', options[:password])
@@ -178,7 +180,7 @@ module ActiveMerchant
 	        root_node << XmlNode.new('MailpieceShape', package.shape || 'PARCEL')
 
 	        # Customs stuff
-	        if options[:customs_info]
+	        if !domestic and options[:customs_info]
             customs_info = options[:customs_info]
 						root_node << XmlNode.new('IntegratedFormType', customs_info.usps_form_type)
 						root_node << XmlNode.new('CustomsCertify', customs_info.certify.to_s.upcase)

@@ -318,7 +318,6 @@ module ActiveMerchant
             address << XmlNode.new('Zip4', location.zip4)
           end
         end
-      puts request
         URI.encode(save_request(request.to_s))
       end
 
@@ -515,7 +514,6 @@ module ActiveMerchant
         scheme = USE_SSL[action] ? 'https://' : 'http://'
         host = test ? TEST_DOMAINS[USE_SSL[action]] : LIVE_DOMAIN
         resource = test ? TEST_RESOURCE : LIVE_RESOURCE
-        puts "#{scheme}#{host}/#{resource}?API=#{API_CODES[action]}&XML=#{request}"
         "#{scheme}#{host}/#{resource}?API=#{API_CODES[action]}&XML=#{request}"
       end
       

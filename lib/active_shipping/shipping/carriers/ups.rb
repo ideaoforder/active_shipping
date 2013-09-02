@@ -159,6 +159,38 @@ module ActiveMerchant
 
       PACKAGING_TYPES = UPS_PACKAGING_TYPES.merge(MI_PACKAGING_TYPES) 
 
+      # These are international rates, by OZ, in USD
+      MI_PRIORITY_RATES = {
+        1  => 0.41, 
+        2  => 0.82, 
+        3  => 1.23, 
+        4  => 1.64, 
+        5  => 2.05, 
+        6  => 2.46, 
+        7  => 2.87, 
+        8  => 3.28, 
+        12   => 4.91, 
+        16   => 6.55, 
+        20   => 8.19,
+        24   => 9.83, 
+        28   => 11.46, 
+        32   => 13.10, 
+        36   => 14.74, 
+        40   => 16.38, 
+        44   => 18.01, 
+        48   => 19.65, 
+        52   => 21.29, 
+        56   => 22.93, 
+        60   => 24.56, 
+        64   => 26.20 
+      }
+
+      MI_EXPRESS_RATES = {}
+
+      MI_EXPEDITED_RATES = {}
+  
+      MI_RATES = MI_PRIORITY_RATES.merge(MI_EXPEDITED_RATES).merge(MI_EXPRESS_RATES)      
+
       UOM = {
         "BA"=>"Barrel", 
         "BE"=>"Bundle", 
@@ -217,9 +249,7 @@ module ActiveMerchant
         packages = Array(packages)
         access_request = build_access_request
         rate_request = build_rate_request(origin, destination, packages, options)
-      puts rate_request.inspect
         response = commit(:rates, save_request(access_request + rate_request), (options[:test] || false))
-      puts response.inspect
         parse_rate_response(origin, destination, packages, response, options)
       end
       
@@ -239,9 +269,7 @@ module ActiveMerchant
         
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
-      puts req.inspect
         response = commit(:label, save_request(req), (options[:test] || false))
-      puts response.inspect
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -795,7 +823,6 @@ module ActiveMerchant
       
       def parse_rate_response(origin, destination, packages, response, options={})
         rates = []
-        
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -815,6 +842,42 @@ module ActiveMerchant
                                 :service_code => service_code,
                                 :packages => packages,
                                 :delivery_range => [timestamp_from_business_day(days_to_delivery)])
+          end
+
+          if options[:mail_innovations]
+            domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
+            if domestic
+              service_code = "72"
+              listed_rates = MI_EXPEDITED_RATES
+              range = [2, 6] # TODO What is the range?!
+            else
+              service_code = "73"
+              listed_rates = MI_PRIORITY_RATES
+              range = [6,10]
+            end
+
+            # 1 - 8oz normal, by 4s after that.
+            rate = 0.0
+            for package in packages
+              rp = package.oz.ceil
+              if rp <= 8
+                key = rp
+              else
+                key = (package.oz / 4).ceil * 4
+              end
+              rate += listed_rates[key]
+            end
+
+            # "72" => "UPS Expedited Mail Innovations" # DOMESTIC # NOTE: We don't use this yet
+            # "73" => "UPS Priority Mail Innovations" # INTL
+            # "74" => "UPS Economy Mail Innovations" # INTL # NOTE: We don't use this yet
+            rate_estimates << RateEstimate.new(origin, destination, @@name,
+                                service_name_for(origin, service_code),
+                                :total_price => rate,
+                                :currency => 'USD',
+                                :service_code => service_code,
+                                :packages => packages,
+                                :delivery_range => range)
           end
         end
         RateResponse.new(success, message, Hash.from_xml(response).values.first, :rates => rate_estimates, :xml => response, :request => last_request)
