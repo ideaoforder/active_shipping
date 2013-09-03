@@ -641,8 +641,9 @@ module ActiveMerchant
 
             if origin.country_code == 'US' and (destination.country_code == 'CA' or destination.province == 'Puerto Rico')
               shipment << XmlNode.new('InvoiceLineTotal') do |ilt|
+                ival = options[:value].to_f || 1.0
                 ilt << XmlNode.new("CurrencyCode", options[:currency] || 'USD')
-                ilt << XmlNode.new("MonetaryValue", options[:value] || 1.0)
+                ilt << XmlNode.new("MonetaryValue", [ival, 1.0].max)
               end
             end
           
