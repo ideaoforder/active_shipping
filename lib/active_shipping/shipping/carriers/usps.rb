@@ -325,11 +325,10 @@ module ActiveMerchant
         success = true
         message = ''
         address = {}
-  
         xml = REXML::Document.new(response)
-        if error = xml.elements['/AddressValidateResponse/Address/Error']
+        if !xml.elements['/AddressValidateResponse/Address/Error'].nil?
           success = false
-          message = error.get_text['Description'].to_s
+          message = Hash.from_xml(xml.elements['/AddressValidateResponse/Address/Error/Description'].to_s)['Description']
         else
           returned_address = Hash.from_xml(xml.elements['/AddressValidateResponse/Address'].to_s)
           returned_address['Address']['address1'] = returned_address['Address']['Address2']

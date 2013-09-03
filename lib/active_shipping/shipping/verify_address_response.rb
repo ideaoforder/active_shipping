@@ -11,6 +11,7 @@ module ActiveMerchant #:nodoc:
                   :address2,
                   :company_name,
                   :country,
+                  :success,
                   :message
       
       def initialize(success, message, address = {}, options = {})

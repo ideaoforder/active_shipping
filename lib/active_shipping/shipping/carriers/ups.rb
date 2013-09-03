@@ -270,7 +270,6 @@ module ActiveMerchant
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
         response = commit(:label, save_request(req), (options[:test] || false))
-      puts response
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -847,6 +846,7 @@ module ActiveMerchant
           end
 
           if options[:mail_innovations]
+            error = false
             domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
             if domestic
               service_code = "72"
@@ -867,19 +867,25 @@ module ActiveMerchant
               else
                 key = (package.oz / 4).ceil * 4
               end
-              rate += listed_rates[key]
+              unless listed_rates[key]
+                error = true 
+              else
+                rate += listed_rates[key]
+              end
             end
 
             # "72" => "UPS Expedited Mail Innovations" # DOMESTIC # NOTE: We don't use this yet
             # "73" => "UPS Priority Mail Innovations" # INTL
             # "74" => "UPS Economy Mail Innovations" # INTL # NOTE: We don't use this yet
-            rate_estimates << RateEstimate.new(origin, destination, @@name,
-                                service_name_for(origin, service_code),
-                                :total_price => rate,
-                                :currency => 'USD',
-                                :service_code => service_code,
-                                :packages => packages,
-                                :delivery_range => range)
+            unless error
+              rate_estimates << RateEstimate.new(origin, destination, @@name,
+                                  service_name_for(origin, service_code),
+                                  :total_price => rate,
+                                  :currency => 'USD',
+                                  :service_code => service_code,
+                                  :packages => packages,
+                                  :delivery_range => range)
+            end
           end
         end
         RateResponse.new(success, message, Hash.from_xml(response).values.first, :rates => rate_estimates, :xml => response, :request => last_request)
