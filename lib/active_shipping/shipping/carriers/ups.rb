@@ -594,8 +594,8 @@ module ActiveMerchant
             # END MAIL INNOVATIONS
 
             shipment << XmlNode.new('PaymentInformation') do |payment|
-              pay_type = PAYMENT_TYPES[options[:pay_type]] || 'Prepaid'
-
+              # Mail Innovations can only be prepaid
+              pay_type = (mail_innovations or !options[:pay_type]) ? 'Prepaid' : PAYMENT_TYPES[options[:pay_type]]
               if pay_type == 'Prepaid'
                 payment << XmlNode.new('Prepaid') do |prepaid|
                   prepaid << XmlNode.new('BillShipper') do |bill_shipper|
