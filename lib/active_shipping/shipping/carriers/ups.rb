@@ -270,6 +270,7 @@ module ActiveMerchant
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
         response = commit(:label, save_request(req), (options[:test] || false))
+      puts response
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -481,7 +482,8 @@ module ActiveMerchant
             request << XmlNode.new('RequestOption', "nonvalidate")
             request << XmlNode.new('TransactionReference') do |ref|
               # request << XmlNode.new('XpciVersion', '1.0001')
-              ref << XmlNode.new('CustomerContext', "#{destination.city}, #{destination.state} #{destination.zip}")
+              customer_context = options[:reference_number] || destination.zip
+              ref << XmlNode.new('CustomerContext', customer_context)
             end
           end
 
