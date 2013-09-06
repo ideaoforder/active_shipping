@@ -641,9 +641,9 @@ module ActiveMerchant
 
             if origin.country_code == 'US' and (destination.country_code == 'CA' or destination.province == 'Puerto Rico')
               shipment << XmlNode.new('InvoiceLineTotal') do |ilt|
-                ival = options[:value].to_f || 1.0
+                ival = options[:value] ? options[:value].to_f.ceil.to_i : 1
                 ilt << XmlNode.new("CurrencyCode", options[:currency] || 'USD')
-                ilt << XmlNode.new("MonetaryValue", [ival, 1.0].max)
+                ilt << XmlNode.new("MonetaryValue", [ival, 1].max)
               end
             end
           
@@ -1004,6 +1004,16 @@ module ActiveMerchant
             extension = package_element.get_text("LabelImage/LabelImageFormat/Code").to_s
             package_labels.last[:label_file] = Tempfile.new(["shipping_label_#{Time.now}_#{Time.now.usec}", '.' + extension.downcase], :encoding => 'ascii-8bit')
             package_labels.last[:label_file].write Base64.decode64( package_labels.last[:encoded_label].value )
+
+            # If this is a Mail Innovations EPL, we add in a 1px image
+            # because it won't print otherwise
+            # This is text generated from a PCX image
+            # EX: IO.read("test.pcx").force_encoding("ISO-8859-1").encode("utf-8", replace: nil)
+            # NOTE: Mail Innovations breaks from the UPS 1Z prefix on tracking numbers
+            # if extension.downcase == 'epl' and package_labels.last[:tracking_number][0..1] != '1Z'
+            #   package_labels.last[:label_file].write("\n\u0005\u0001\u0001\u0000\u0000\u0000\u0000\a\u0000\a\u0000H\u0000H\u0000\u000F\u000F\u000F\u000E\u000E\u000E\r\r\r\f\f\f\v\v\v\n\n\n\t\t\t\b\b\b\a\a\a\u0006\u0006\u0006\u0005\u0005\u0005\u0004\u0004\u0004\u0003\u0003\u0003\u0002\u0002\u0002\u0001\u0001\u0001\u0000\u0000\u0000\u0000\u0001\u0002\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000ÂÿÂÿÂÿÂÿÂÿÂÿÂÿÂÿ")
+            # end
+
             package_labels.last[:label_file].rewind
             
             # if this package has a high insured value
