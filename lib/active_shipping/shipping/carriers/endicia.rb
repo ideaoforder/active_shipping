@@ -11,7 +11,7 @@ module ActiveMerchant
       @@name = "Endicia"
       
       TEST_URL = 'https://www.envmgr.com'
-      LIVE_URL = 'https://www.envmgr.com'
+      LIVE_URL = 'https://labelserver.endicia.com'
 
     # return Endicia::Label.new(result["LabelRequestResponse"])
       
@@ -89,7 +89,7 @@ module ActiveMerchant
         package = packages.first # For the moment, let's get one package working
         
         label_request = build_label_request(origin, destination, package, options)
-        puts label_request.inspect
+puts label_request.inspect
         response = commit(:label, save_request(label_request), (options[:test] || false))
         puts response.inspect
         parse_label_response(origin, destination, packages, response, options)
@@ -120,8 +120,14 @@ module ActiveMerchant
 
         # pickup_date = options[:pickup_date] ? Date.parse(options[:pickup_date]).strftime("%Y%m%d") : Time.now.strftime("%Y%m%d")
 
+        if options[:test] and (options[:test] === true or (options[:test].is_a? String and options[:test].downcase == 'true'))
+          test = 'YES'
+        else 
+          test = 'NO'
+        end
+
         # FIXME: this format doesn't seem to work for domestic
-        xml_request = XmlNode.new('LabelRequest', :LabelType => (domestic ? "Default" : "International"),  :Test => (options[:test] ? 'YES' : 'NO'), :ImageFormat =>  (options[:image_type] || 'GIF')) do |root_node|
+        xml_request = XmlNode.new('LabelRequest', :LabelType => (domestic ? "Default" : "International"),  :Test => test, :ImageFormat =>  (options[:image_type] || 'GIF')) do |root_node|
         	# Account stuff
           root_node << XmlNode.new('LabelSubtype', "Integrated") unless domestic
           root_node << XmlNode.new('AccountID', options[:account_id])
