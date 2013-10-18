@@ -254,6 +254,7 @@ module ActiveMerchant
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         extension = options[:image_type] || 'GIF'
+        extension = 'EPL' if extension == 'EPL2'
 
         if success
           message = ''

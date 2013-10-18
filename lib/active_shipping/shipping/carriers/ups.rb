@@ -157,39 +157,7 @@ module ActiveMerchant
         '67' => 'Standard Flat'
       }
 
-      PACKAGING_TYPES = UPS_PACKAGING_TYPES.merge(MI_PACKAGING_TYPES) 
-
-      # These are international rates, by OZ, in USD
-      MI_PRIORITY_RATES = {
-        1  => 0.41, 
-        2  => 0.82, 
-        3  => 1.23, 
-        4  => 1.64, 
-        5  => 2.05, 
-        6  => 2.46, 
-        7  => 2.87, 
-        8  => 3.28, 
-        12   => 4.91, 
-        16   => 6.55, 
-        20   => 8.19,
-        24   => 9.83, 
-        28   => 11.46, 
-        32   => 13.10, 
-        36   => 14.74, 
-        40   => 16.38, 
-        44   => 18.01, 
-        48   => 19.65, 
-        52   => 21.29, 
-        56   => 22.93, 
-        60   => 24.56, 
-        64   => 26.20 
-      }
-
-      MI_EXPRESS_RATES = {}
-
-      MI_EXPEDITED_RATES = {}
-  
-      MI_RATES = MI_PRIORITY_RATES.merge(MI_EXPEDITED_RATES).merge(MI_EXPRESS_RATES)      
+      PACKAGING_TYPES = UPS_PACKAGING_TYPES.merge(MI_PACKAGING_TYPES)    
 
       UOM = {
         "BA"=>"Barrel", 
@@ -269,7 +237,9 @@ module ActiveMerchant
         
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
+      puts "LABEL REQUEST: " + req
         response = commit(:label, save_request(req), (options[:test] || false))
+      puts "LABEL RESPONSE: " + response
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -285,7 +255,9 @@ module ActiveMerchant
 
         accept_request = build_accept_request(shipment_digest)
         req = access_request + accept_request
+      puts "ACCEPT REQUEST: " + req
         response = commit(:accept, save_request(req), (options[:test] || false))
+      puts "ACCEPT RESPONSE: " + response
         parse_label_response(origin, destination, packages, response, options)
       end
 
@@ -643,7 +615,7 @@ module ActiveMerchant
               shipment << XmlNode.new('InvoiceLineTotal') do |ilt|
                 ival = options[:value] ? options[:value].to_f.ceil.to_i : 1
                 ilt << XmlNode.new("CurrencyCode", options[:currency] || 'USD')
-                ilt << XmlNode.new("MonetaryValue", [ival, 1].max)
+                ilt << XmlNode.new("MonetaryValue", [ival, 1].max.to_s)
               end
             end
           
@@ -851,29 +823,16 @@ module ActiveMerchant
             domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
             if domestic
               service_code = "72"
-              listed_rates = MI_EXPEDITED_RATES
+              # listed_rates = MI_EXPEDITED_RATES
               range = [2, 6] # TODO What is the range?!
             else
               service_code = "73"
-              listed_rates = MI_PRIORITY_RATES
+              # listed_rates = MI_PRIORITY_RATES
               range = [6,10]
             end
 
-            # 1 - 8oz normal, by 4s after that.
-            rate = 0.0
-            for package in packages
-              rp = package.oz.ceil
-              if rp <= 8
-                key = rp
-              else
-                key = (package.oz / 4).ceil * 4
-              end
-              unless listed_rates[key]
-                error = true 
-              else
-                rate += listed_rates[key]
-              end
-            end
+            mi_rate = options[:mi_rate] || 11.0
+            rate = packages.sum(&:lbs) * mi_rate
 
             # "72" => "UPS Expedited Mail Innovations" # DOMESTIC # NOTE: We don't use this yet
             # "73" => "UPS Priority Mail Innovations" # INTL
