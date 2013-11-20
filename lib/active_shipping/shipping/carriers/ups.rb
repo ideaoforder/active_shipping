@@ -560,7 +560,9 @@ module ActiveMerchant
               end # End INTL shipment
               shipment << XmlNode.new('SubClassification', options[:irregular] ? 'IR' : 'MA')
               shipment << XmlNode.new('CostCenter', options[:cost_center] || "costcenter123")
-              shipment << XmlNode.new('PackageID', options[:reference_number])
+              unless destination.province == 'Puerto Rico' or destination.country_code == 'PR'
+                shipment << XmlNode.new('PackageID', options[:reference_number])
+              end
               # /ShipmentConfirmRequest/Shipment/IrregularIndicator
             end
             # END MAIL INNOVATIONS
@@ -611,7 +613,7 @@ module ActiveMerchant
               service << XmlNode.new('Code', DEFAULT_SERVICES.invert[options[:service_type]] || '03')  # defaults to ground
             end
 
-            if origin.country_code == 'US' and (destination.country_code == 'CA' or destination.province == 'Puerto Rico')
+            if origin.country_code == 'US' and (destination.country_code == 'CA' or destination.province == 'Puerto Rico' or destination.country_code == 'PR' )
               shipment << XmlNode.new('InvoiceLineTotal') do |ilt|
                 ival = options[:value] ? options[:value].to_f.ceil.to_i : 1
                 ilt << XmlNode.new("CurrencyCode", options[:currency] || 'USD')
@@ -658,7 +660,7 @@ module ActiveMerchant
                   package_weight << XmlNode.new("Weight", [value,0.1].max)
                 end
 
-                if !options[:reference_number].blank? and !(MAIL_INNOVATIONS_SERVICES.values + WORLDWIDE_SERVICES.values).include?(options[:service_type])
+                if !options[:reference_number].blank? and !(MAIL_INNOVATIONS_SERVICES.values + WORLDWIDE_SERVICES.values).include?(options[:service_type]) and (destination.province != 'Puerto Rico' and destination.country_code != 'PR')
                   package_node << XmlNode.new("ReferenceNumber") do |ref_num|
                     ref_num << XmlNode.new("Code", '02')
                     ref_num << XmlNode.new("Value", options[:reference_number])
