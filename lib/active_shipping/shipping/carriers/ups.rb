@@ -74,44 +74,48 @@ module ActiveMerchant
         "84" => "UPS Today Intercity",
         "85" => "UPS Today Express",
         "86" => "UPS Today Express Saver",
-        "72" => "UPS Expedited Mail Innovations",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"
+        "M2" => "UPS First-Class Mail United States",
+        "M3" => "UPS Priority Mail United States",
+        "M4" => "UPS Expedited Mail Innovations",
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"  
       }
-      
+
       CANADA_ORIGIN_SERVICES = {
         "01" => "UPS Express",
         "02" => "UPS Expedited",
         "14" => "UPS Express Early A.M.",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"   
       }
       
       MEXICO_ORIGIN_SERVICES = {
         "07" => "UPS Express",
         "08" => "UPS Expedited",
         "54" => "UPS Express Plus",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"   
       }
       
       EU_ORIGIN_SERVICES = {
         "07" => "UPS Express",
         "08" => "UPS Expedited",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"   
       }
       
       OTHER_NON_US_ORIGIN_SERVICES = {
         "07" => "UPS Express",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"   
       }
 
       MAIL_INNOVATIONS_SERVICES = {
-        "72" => "UPS Expedited Mail Innovations",
-        "73" => "UPS Priority Mail Innovations",
-        "74" => "UPS Economy Mail Innovations"        
+        "M2" => "UPS First-Class Mail United States",
+        "M3" => "UPS Priority Mail United States",
+        "M4" => "UPS Expedited Mail Innovations",
+        "M5" => "UPS Priority Mail Innovations",
+        "M6" => "UPS Economy Mail Innovations"        
       }
 
       WORLDWIDE_SERVICES = {
@@ -237,9 +241,7 @@ module ActiveMerchant
         
         label_request = build_label_request(origin, destination, packages, options)
         req = access_request + label_request
-      puts "LABEL REQUEST: " + req
         response = commit(:label, save_request(req), (options[:test] || false))
-      puts "LABEL RESPONSE: " + response
         xml = REXML::Document.new(response)
         success = response_success?(xml)
         message = response_message(xml)
@@ -255,9 +257,7 @@ module ActiveMerchant
 
         accept_request = build_accept_request(shipment_digest)
         req = access_request + accept_request
-      puts "ACCEPT REQUEST: " + req
         response = commit(:accept, save_request(req), (options[:test] || false))
-      puts "ACCEPT RESPONSE: " + response
         parse_label_response(origin, destination, packages, response, options)
       end
 
