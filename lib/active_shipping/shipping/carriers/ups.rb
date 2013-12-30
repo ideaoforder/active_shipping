@@ -824,11 +824,11 @@ module ActiveMerchant
             error = false
             domestic = (origin.country_code(:alpha2) == 'US' and destination.country_code(:alpha2) == 'US') ? true : false
             if domestic
-              service_code = "72"
+              service_code = "M4"
               # listed_rates = MI_EXPEDITED_RATES
               range = [2, 6] # TODO What is the range?!
             else
-              service_code = "73"
+              service_code = "M5"
               # listed_rates = MI_PRIORITY_RATES
               range = [6,10]
             end
@@ -836,9 +836,9 @@ module ActiveMerchant
             mi_rate = options[:mi_rate] || 11.0
             rate = packages.sum(&:lbs) * mi_rate
 
-            # "72" => "UPS Expedited Mail Innovations" # DOMESTIC # NOTE: We don't use this yet
-            # "73" => "UPS Priority Mail Innovations" # INTL
-            # "74" => "UPS Economy Mail Innovations" # INTL # NOTE: We don't use this yet
+            # "M4" => "UPS Expedited Mail Innovations" # DOMESTIC # NOTE: We don't use this yet
+            # "M5" => "UPS Priority Mail Innovations" # INTL
+            # "M6" => "UPS Economy Mail Innovations" # INTL # NOTE: We don't use this yet
             unless error
               rate_estimates << RateEstimate.new(origin, destination, @@name,
                                   service_name_for(origin, service_code),
